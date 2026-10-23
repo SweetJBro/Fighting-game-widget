@@ -65,7 +65,9 @@
     if (state.rom) {
       badge.textContent = (state.rom.packaged ? "packaged · " : "") + state.rom.name;
       badge.classList.remove("badge-muted"); badge.classList.add("badge-ok");
-      $("rom-drop-status").textContent = (state.rom.packaged ? "Packaged on this server: " : "Stored: ") + state.rom.name + " (" + (state.rom.size / 1048576).toFixed(1) + " MB)";
+      const version = TSL.RomStore.describe(state.rom.name);
+      $("rom-drop-status").textContent = (state.rom.packaged ? "Packaged on this server: " : "Stored: ") + state.rom.name + " (" + (state.rom.size / 1048576).toFixed(1) + " MB)" + (version ? " · " + version : "");
+      badge.title = version || "";
       $("rom-drop-status").className = "dropzone-status ok";
       $("btn-rom-continue").disabled = false;
     } else {

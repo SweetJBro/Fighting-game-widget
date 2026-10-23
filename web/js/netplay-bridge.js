@@ -55,6 +55,14 @@ TSL.Netplay = (() => {
       quickLoad: false, cacheManager: false, exitEmulation: false, screenRecord: false,
       saveSavFiles: false, loadSavFiles: false
     };
+    // Match Fightcade's sfiii3nr1 setup (its fcadefbneo/games/sfiii3nr1.ini:
+    // Region 0x01 = Japan, cpu 0x0100 = 100%). These are the FBNeo core's own
+    // defaults for this driver too; pinning them keeps every player identical.
+    window.EJS_coreOpts = {
+      "fbneo-dipswitch-sfiii3nr1-Region": "Japan",
+      "fbneo-cpu-speed-adjust": "100%",
+      "fbneo-frameskip-type": "disabled"
+    };
     window.EJS_onGameStart = onGameStart;
   }
 

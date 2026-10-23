@@ -31,8 +31,16 @@ TSL.RomStore = (() => {
     return SET_RE.test(base) ? base : null;
   }
 
+  const VERSIONS = {
+    "sfiii3nr1.zip": "Japan 990512 NO CD, the set Fightcade runs",
+    "sfiii3n.zip": "Japan 990608 NO CD",
+    "sfiii3r1.zip": "Euro 990512",
+    "sfiii3.zip": "Euro 990608"
+  };
+
   return {
     canonicalName,
+    describe(name) { return VERSIONS[String(name || "").toLowerCase()] || ""; },
     MIN_SIZE,
     async get() {
       const rec = await tx("readonly", (s) => s.get(KEY));
