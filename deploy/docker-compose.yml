@@ -1,0 +1,41 @@
+# Production layout: Caddy terminates TLS for two hostnames.
+#   LOBBY_HOST   -> web (static lobby + /config.json)
+#   NETPLAY_HOST -> netplay (socket.io + WebRTC signalling)
+# Copy ../.env.example to ../.env and fill it in, then: docker compose up -d --build
+services:
+  web:
+    build: { context: .., dockerfile: deploy/Dockerfile.web }
+    environment:
+      NETPLAY_URL: https://${NETPLAY_HOST}
+      PUBLIC_URL: https://${LOBBY_HOST}/
+      ICE_SERVERS: ${ICE_SERVERS:-[{"urls":"stun:stun.l.google.com:19302"}]}
+      GAME_ID: ${GAME_ID:-33}
+      PACKAGED_ROM: ${PACKAGED_ROM:-0}   # roms/ is not in the image; mount it at /app/roms and set 1 to serve it
+    restart: unless-stopped
+
+  netplay:
+    build: { context: .., dockerfile: deploy/Dockerfile.netplay }
+    restart: unless-stopped
+
+  bot:
+    build: { context: .., dockerfile: deploy/Dockerfile.bot }
+    environment:
+      FLUXER_BOT_TOKEN: ${FLUXER_BOT_TOKEN:-}
+      LOBBY_URL: https://${LOBBY_HOST}/
+      FLUXER_INSTANCE: ${FLUXER_INSTANCE:-https://fluxer.app}
+    restart: unless-stopped
+    profiles: ["fluxer"]
+
+  caddy:
+    image: caddy:2-alpine
+    ports: ["80:80", "443:443"]
+    environment:
+      LOBBY_HOST: ${LOBBY_HOST}
+      NETPLAY_HOST: ${NETPLAY_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    restart: unless-stopped
+
+volumes:
+  caddy_data:

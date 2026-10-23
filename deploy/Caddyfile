@@ -1,0 +1,7 @@
+{$LOBBY_HOST} {
+    reverse_proxy web:8080
+}
+
+{$NETPLAY_HOST} {
+    reverse_proxy netplay:4000
+}

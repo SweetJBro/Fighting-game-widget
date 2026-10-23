@@ -1,0 +1,14 @@
+{
+  "name": "third-strike-lobby",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Street Fighter III: 3rd Strike community lobby - Matrix room widget + Fluxer bot, browser netplay via EmulatorJS/FBNeo",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "web": "node server/serve.js",
+    "netplay": "scripts/netplay-server.sh",
+    "bot": "node bot/fluxer-bot.mjs",
+    "dev": "scripts/dev.sh"
+  }
+}

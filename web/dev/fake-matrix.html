@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Fake Matrix client (dev harness)</title>
+<style>body{margin:0;font-family:sans-serif;background:#222;color:#ddd}
+.row{display:flex;gap:8px;padding:8px}iframe{flex:1;height:520px;border:1px solid #555;background:#000}
+#log{font:12px monospace;white-space:pre-wrap;padding:8px;max-height:200px;overflow:auto}</style>
+<script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
+</head><body>
+<div class="row"><iframe id="alice"></iframe><iframe id="bob"></iframe></div>
+<div id="log"></div>
+<script>
+const mx = typeof mxwidgets === "function" ? mxwidgets() : mxwidgets;
+const LOBBY = location.origin + "/";
+const ROOM = "!room:example.org";
+const users = { alice: { id: "@alice:example.org", name: "Alice" }, bob: { id: "@bob:example.org", name: "Bob" } };
+const members = Object.values(users).map(u => ({ type: "m.room.member", state_key: u.id, sender: u.id, room_id: ROOM, event_id: "$m" + u.name, origin_server_ts: 1, content: { membership: "join", displayname: u.name } }));
+const timeline = [];
+const apis = {};
+window.__log = [];
+function log(...a) { const s = a.map(x => typeof x === "string" ? x : JSON.stringify(x)).join(" "); window.__log.push(s); document.getElementById("log").textContent += s + "\n"; }
+
+function makeDriver(who) {
+  const u = users[who];
+  class Driver extends mx.WidgetDriver {
+    validateCapabilities(requested) { log(who, "capabilities", [...requested]); return Promise.resolve(new Set(requested)); }
+    async sendEvent(eventType, content, stateKey, roomId) {
+      const ev = { type: eventType, content, sender: u.id, event_id: "$" + Date.now() + Math.random().toString(36).slice(2, 6), origin_server_ts: Date.now(), room_id: roomId || ROOM, unsigned: {} };
+      timeline.push(ev);
+      log(who, "sent", eventType, content);
+      for (const [name, api] of Object.entries(apis)) {
+        try { await api.feedEvent(ev, ROOM); } catch (e) { log("feed to", name, "failed:", e.message); }
+      }
+      return { roomId: ROOM, eventId: ev.event_id };
+    }
+    async readRoomEvents(eventType, msgtype, limit) { return timeline.filter(e => e.type === eventType).slice(-limit); }
+    async readRoomTimeline(roomId, eventType, msgtype, stateKey, limit) { return timeline.filter(e => e.type === eventType).slice(-limit); }
+    async readStateEvents(eventType, stateKey, limit) { return eventType === "m.room.member" ? members : []; }
+    async readRoomState(roomId, eventType, stateKey) { return eventType === "m.room.member" ? members : []; }
+  }
+  return new Driver();
+}
+
+function mount(who) {
+  const u = users[who];
+  const iframe = document.getElementById(who);
+  const url = LOBBY + "?widgetId=w_" + who + "&userId=" + encodeURIComponent(u.id) + "&displayName=" + encodeURIComponent(u.name) + "&roomId=" + encodeURIComponent(ROOM) + "&parentUrl=" + encodeURIComponent(location.href);
+  const widget = new mx.Widget({ id: "w_" + who, creatorUserId: u.id, type: "m.custom", url });
+  iframe.src = url;
+  const api = new mx.ClientWidgetApi(widget, iframe, makeDriver(who));
+  api.on("ready", () => log(who, "widget ready"));
+  api.on("preparing", () => log(who, "widget preparing"));
+  apis[who] = api;
+}
+mount("alice"); mount("bob");
+</script></body></html>

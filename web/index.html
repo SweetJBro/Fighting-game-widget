@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3rd Strike Lobby</title>
+  <link rel="stylesheet" href="css/app.css?v=11">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">3S</span>
+      <span class="brand-text">3rd Strike Lobby</span>
+    </div>
+    <div class="topbar-right">
+      <span id="mode-badge" class="badge">standalone</span>
+      <span id="rom-badge" class="badge badge-muted">no ROM</span>
+      <button id="btn-rom-settings" class="btn btn-ghost btn-sm" title="Change ROM">ROM</button>
+    </div>
+  </header>
+
+  <main id="app">
+
+    <!-- ROM screen -->
+    <section id="screen-rom" class="screen">
+      <div class="card">
+        <h1 id="rom-heading">Bring your own ROM</h1>
+        <p id="rom-intro">
+          This lobby does not ship or download any game data. Pick your own
+          <strong>Street Fighter III: 3rd Strike</strong> FBNeo romset. The file stays in
+          this browser (IndexedDB) and is never uploaded anywhere.
+        </p>
+        <p id="rom-intro-packaged" class="hidden">
+          This server packages its owner's <strong>Street Fighter III: 3rd Strike</strong> romset for
+          personal use, so you can play right away. Storing your own set below is optional; a stored
+          set takes precedence and stays in this browser (IndexedDB).
+        </p>
+        <p class="hint">
+          Accepted set names: <code>sfiii3nr1.zip</code> (Japan 990512, no CD, the Fightcade standard),
+          <code>sfiii3n.zip</code>, <code>sfiii3r1.zip</code>, <code>sfiii3.zip</code>.
+          The zip must keep its original set name so FBNeo recognises it, and it must be a
+          <strong>full set</strong> (roughly 65–80 MB depending on compression) that already contains the shared <code>sfiii3-simm2.x</code> to
+          <code>simm6.x</code> files. Fightcade's split pair can be merged with <code>scripts/merge-romset.py</code>.
+        </p>
+        <label id="rom-drop" class="dropzone" for="rom-file">
+          <input id="rom-file" type="file" accept=".zip,application/zip">
+          <span class="dropzone-title">Drop the zip here or click to choose</span>
+          <span id="rom-drop-status" class="dropzone-status"></span>
+        </label>
+        <div class="row">
+          <button id="btn-rom-clear" class="btn btn-ghost btn-sm">Forget stored ROM</button>
+          <button id="btn-rom-continue" class="btn btn-primary" disabled>Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lobby screen -->
+    <section id="screen-lobby" class="screen hidden">
+      <div class="lobby-grid">
+        <div class="card">
+          <h2 id="lobby-title">Lobby</h2>
+          <p id="lobby-subtitle" class="hint"></p>
+
+          <div id="name-row" class="row">
+            <label class="field">
+              <span>Your fighter name</span>
+              <input id="player-name" type="text" maxlength="24" placeholder="e.g. jbro">
+            </label>
+          </div>
+
+          <div class="row">
+            <button id="btn-host" class="btn btn-primary">Host a match</button>
+            <button id="btn-open-challenge" class="btn btn-primary hidden">Post open challenge</button>
+          </div>
+
+          <div id="join-row" class="row">
+            <label class="field">
+              <span>Join by code</span>
+              <input id="join-code" type="text" maxlength="12" placeholder="e.g. RYU-7F3K" autocapitalize="characters">
+            </label>
+            <button id="btn-join" class="btn">Join</button>
+          </div>
+
+          <div id="hosting-box" class="notice hidden">
+            <div>You are hosting <strong id="hosting-code"></strong>.</div>
+            <div class="hint">Share this link with your opponent:</div>
+            <div class="row">
+              <input id="hosting-link" type="text" readonly>
+              <button id="btn-copy-link" class="btn btn-sm">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 id="list-title">Open matches</h3>
+          <ul id="match-list" class="list"></ul>
+          <p id="list-empty" class="hint">Nobody is waiting right now.</p>
+        </div>
+
+        <div id="members-card" class="card hidden">
+          <h3>In this room</h3>
+          <ul id="member-list" class="list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Match screen -->
+    <section id="screen-match" class="screen hidden">
+      <div class="matchbar">
+        <div class="matchbar-left">
+          <span class="badge" id="match-role">host</span>
+          <span class="code" id="match-code"></span>
+          <span id="match-status" class="status">starting…</span>
+        </div>
+        <div class="matchbar-right">
+          <span id="match-opponent" class="hint"></span>
+          <button id="btn-controls" class="btn btn-ghost btn-sm">Controls</button>
+          <button id="btn-leave" class="btn btn-danger btn-sm">Leave</button>
+        </div>
+      </div>
+      <div id="ejs-wrap">
+        <div id="ejs"></div>
+      </div>
+      <div id="controls-help" class="controls hidden">
+        <table>
+          <tr><th>Move</th><td>Arrow keys</td><th>Start</th><td>Enter</td><th>Coin</th><td>Space</td></tr>
+          <tr><th>LP / MP / HP</th><td>U / I / O</td><th>LK / MK / HK</th><td>J / K / L</td><th>Gamepad</th><td>Plug in and press a button</td></tr>
+        </table>
+        <p class="hint">Host is Player 1, guest is Player 2. The guest's keys are sent to the host's game automatically.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
+  <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
+  <script src="js/config.js?v=11"></script>
+  <script src="js/romstore.js?v=11"></script>
+  <script src="js/netplay-bridge.js?v=11"></script>
+  <script src="js/matrix-lobby.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
+</body>
+</html>
