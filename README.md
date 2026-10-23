@@ -1,10 +1,7 @@
-<<<<<<< HEAD
-# Fighting-game-widget
+# Fighting Game Matrix Widget
 Widget for Matrix
-=======
-# 3rd Strike Lobby
 
-Play **Street Fighter III: 3rd Strike** against people in your community, from the browser.
+Play **Street Fighter III: 3rd Strike** against people in your community, from the browser. The page is a Matrix room widget first, with a Fluxer bot and a plain link-out mode alongside.
 
 * **Matrix**: add it to a room as a widget. Members see each other, post or accept challenges, and the match opens inside the widget.
 * **Fluxer**: Fluxer has no embedded-app surface, so a bot listens for `!fight @someone` and posts personalised host/join links to the lobby page.
@@ -120,4 +117,3 @@ Measured on this machine in the desktop app's browser pane: the host runs CPS-3 
 * Fluxer's mention syntax in message content is assumed to be Discord-style `<@id>`; that part of the docs was not explicit.
 * `/config.json` hands the ICE server list, including any static TURN username and credential, to every visitor. That is inherent to browser WebRTC; use time-limited TURN credentials if the TURN server matters.
 * `scripts/merge-romset.py` only knows the `sfiii3nr1` + `sfiii3` pairing; other clones (`sfiii3n`, `sfiii3r1`) would need their own simm1 set.
->>>>>>> 1a5e101 (Initial version: 3rd Strike community lobby)
