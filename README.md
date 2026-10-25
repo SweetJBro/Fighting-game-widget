@@ -1,5 +1,5 @@
 # Fighting Game Matrix Widget
-Widget for Matrix
+Vibecoded by JBro:dewrito.net
 
 Play **Street Fighter III: 3rd Strike** against people in your community, from the browser. The page is a Matrix room widget first, with a Fluxer bot and a plain link-out mode alongside.
 
