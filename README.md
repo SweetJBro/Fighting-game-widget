@@ -7,7 +7,15 @@ Play **Street Fighter III: 3rd Strike** against people in your community, from t
 * **Fluxer**: Fluxer has no embedded-app surface, so a bot listens for `!fight @someone` and posts personalised host/join links to the lobby page.
 * **Anywhere else**: the page works on its own. Host a match, share the link.
 
-Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core (CPS-3 driver) in WebAssembly. Netplay is EmulatorJS's built-in mode: the **host runs the game and streams video/audio to the guest over WebRTC; the guest's inputs go back as Player 2** through a small signalling server. It is not rollback netcode. Expect roughly one network round-trip of input lag on the guest side, so it suits casual sets and same-region play rather than tournaments.
+Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core (CPS-3 driver) in WebAssembly. Netplay is EmulatorJS's built-in mode: the **host runs the game and streams video/audio to the guest over WebRTC; the guest's inputs go back as Player 2** through a small signalling server. It is not rollback netcode. Expect roughly one network round-trip of input lag on the guest side, so it suits casual sets and same-region play rather than tournaments. See [docs/ROADMAP.md](docs/ROADMAP.md) for where this is going.
+
+## Netplay feel and connection quality
+
+* **Input delay (host).** The host plays with no network lag and the guest with a full round trip, so the host can delay their *own* inputs by 0-8 frames (default 3, picker in the match bar, remembered per browser) to even it out. It makes matches fairer; it cannot make the guest's side faster.
+* **60 fps stream.** EmulatorJS captures and encodes the host canvas at 30 fps. `web/js/netplay-tuning.js` raises both to `STREAM_FPS` (default 60), lifts the bitrate cap to match, keeps frame rate ahead of resolution under congestion, and sets the guest's jitter buffer target to 0.
+* **Pop out.** "Open matches in a new tab" (on by default inside a chat client) or the Pop out button runs the match in its own full-size tab. That tab is cross-origin isolated (`?isolate=1` gets COOP/COEP), so EmulatorJS also loads its threaded core; on CPS-3 that measured no faster, so the point is a tab you keep in front, outside the chat.
+* **Connection quality.** The top bar shows your round trip to the netplay server. Matrix challenges carry the challenger's server ping, so the accepter sees an estimate before accepting. During a match the bar shows emulator fps (host), peer ping, stream fps, direct or relay route and packet loss, with a coloured dot.
+* **Performance warning.** If the host's emulator stays under 50 fps for three seconds, a banner says so and why (background tab, chat iframe, or CPU).
 
 ## ROMs
 
@@ -34,14 +42,17 @@ The script carries the 41-entry manifest (40 flash + BIOS, sizes and CRC32s) fro
 
 ```
 web/              static lobby + player (vanilla JS, no build step)
-  js/netplay-bridge.js   drives EmulatorJS netplay programmatically (openRoom / joinRoom)
+  js/netplay-bridge.js   drives EmulatorJS netplay programmatically (openRoom / joinRoom), host input delay, fps monitor
+  js/netplay-tuning.js   60 fps stream, bitrate, jitter buffer, peer stats (wraps browser WebRTC APIs, no EmulatorJS fork)
   js/matrix-lobby.js     matrix-widget-api transport, challenge events
   js/romstore.js         IndexedDB ROM storage
   js/app.js              screens: ROM -> lobby -> match
 server/serve.js   zero-dependency static server; renders /config.json from env
 bot/fluxer-bot.mjs  Fluxer gateway bot (Node 22+, no deps)
 scripts/          netplay-server.sh (build + run the official EmulatorJS netplay server), dev.sh,
-                  merge-romset.py (build one browser-ready zip from Fightcade's split pair)
+                  merge-romset.py (build one browser-ready zip from Fightcade's split pair),
+                  fetch-emulatorjs.sh (install the pinned EmulatorJS + fbneo core into web/ejs/)
+docs/             ROADMAP.md (phases, measurements), game-adapter.d.ts (proposed multi-game interface)
 roms/             git-ignored; a merged sfiii3nr1.zip here is served for personal use (see ROMs)
 deploy/           Dockerfiles, docker-compose.yml, Caddyfile (TLS for two hostnames)
 ```
@@ -64,7 +75,16 @@ Netplay needs a secure context for WebRTC and for the Matrix iframe: `localhost`
 2. `cp .env.example .env` and fill it in. Add a TURN server to `ICE_SERVERS` if players sit behind strict NATs.
 3. `cd deploy && docker compose up -d --build` (add `--profile fluxer` to run the bot).
 
-EmulatorJS is loaded from `https://cdn.emulatorjs.org/latest/data/` by default. The `stable` (4.2.3) build still carries the old netplay client and does not work with the current netplay server, so `latest` is required; because `latest` moves, pin it for production by copying a known-good EmulatorJS `data/` folder into `web/ejs/` and setting `EJS_DATA_PATH=ejs/`.
+EmulatorJS is pinned. `scripts/fetch-emulatorjs.sh` installs EmulatorJS at a fixed git commit plus the fbneo core from npm `@emulatorjs/core-fbneo@4.2.3` into `web/ejs/` (git-ignored), and the server uses it automatically; the web Docker image runs the script at build time. A git commit rather than an npm release is required because `@emulatorjs/emulatorjs@4.2.3`, the newest release, still carries the old netplay client that cannot talk to the current netplay server. Without the pinned copy the page falls back to the moving `https://cdn.emulatorjs.org/latest/data/`. Bump `EJS_COMMIT` in the script and the Dockerfile together, and retest netplay when you do.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `STREAM_FPS` | 60 | Host video capture and encode rate, 15-60 |
+| `STREAM_BITRATE_DIRECT` | 4000000 | Max video bits/s on a direct peer path |
+| `STREAM_BITRATE_RELAY` | 1500000 | Max video bits/s through TURN |
+| `INPUT_DELAY_DEFAULT` | 3 | Host input delay in frames until a player picks one |
+| `THREADS` | 1 | `0` stops pop-out tabs loading the threaded core |
+| `EJS_DATA_PATH` | `ejs/` if installed, else CDN `latest` | Where EmulatorJS loads from |
 
 Without Docker: run `scripts/netplay-server.sh` and `node server/serve.js` behind any TLS reverse proxy, setting `NETPLAY_URL` and `PUBLIC_URL` for the web process.
 

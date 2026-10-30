@@ -2,3 +2,4 @@ netplay-server/
 node_modules/
 .env
 *.zip
+web/ejs/

@@ -44,9 +44,62 @@
   }
   function cleanUrl() {
     const u = new URL(location.href);
-    ["match", "role", "sid"].forEach((k) => u.searchParams.delete(k));
+    ["match", "role", "sid", "autostart", "isolate"].forEach((k) => u.searchParams.delete(k));
     return u.toString();
   }
+
+  /* ---------- Pop-out ----------
+     A top-level tab the player keeps in front, outside the chat client. It is
+     also cross-origin isolated (?isolate=1), which lets EmulatorJS load its
+     threaded core; on CPS-3 that measured within noise of the plain core, so
+     the isolation is a bonus, not the reason to pop out. */
+  const inIframe = window.top !== window;
+  const isolatedTab = !!window.crossOriginIsolated || params.get("isolate") === "1";
+  const POPOUT_KEY = "tsl.popout";
+  function popoutPref() {
+    if (isolatedTab) return false;
+    let v = null;
+    try { v = localStorage.getItem(POPOUT_KEY); } catch (_) {}
+    return v === null ? inIframe : v === "1";   // default on inside a chat iframe
+  }
+  function popoutUrl({ code, role, sid }) {
+    const u = new URL(cfg.publicUrl, location.href);
+    u.search = "";
+    u.searchParams.set("match", code);
+    u.searchParams.set("role", role);
+    if (sid) u.searchParams.set("sid", sid);
+    u.searchParams.set("name", myName());
+    u.searchParams.set("autostart", "1");
+    u.searchParams.set("isolate", "1");
+    return u.toString();
+  }
+  /** Opens the match in its own tab. Returns false when the browser blocked the popup. */
+  function openPopout(m) {
+    const w = window.open(popoutUrl(m), "_blank");
+    if (!w) { toast("Your browser blocked the new tab, so the match runs here instead.", true); return false; }
+    const n = $("popout-notice");
+    n.textContent = "Match " + m.code + " is running in another tab. Close that tab to end it.";
+    n.classList.remove("hidden");
+    return true;
+  }
+  $("popout-pref").checked = popoutPref();
+  $("popout-pref").addEventListener("change", (e) => { try { localStorage.setItem(POPOUT_KEY, e.target.checked ? "1" : "0"); } catch (_) {} });
+  if (isolatedTab) $("popout-row").classList.add("hidden");
+
+  /* ---------- Ping to the netplay server ---------- */
+  state.serverPing = null;
+  async function refreshPing() {
+    const ms = await TSL.Tuning.serverPing(cfg.netplayUrl);
+    state.serverPing = ms;
+    const b = $("ping-badge");
+    b.classList.remove("badge-muted", "q-good", "q-ok", "q-poor");
+    if (ms === null) { b.textContent = "server offline"; b.classList.add("q-poor"); return; }
+    b.textContent = "server " + ms + " ms";
+    b.classList.add("q-" + TSL.Tuning.grade(ms));
+    if (state.mode === "matrix") renderChallenges();
+  }
+  refreshPing();
+  setInterval(refreshPing, 15000);
 
   /* ---------- ROM screen ---------- */
   async function refreshRom() {
@@ -168,6 +221,8 @@
     $("list-title").parentElement.classList.add("hidden");
     $("btn-host").textContent = "Fight";
     $("btn-host").onclick = () => startMatch({ code, role, sid: params.get("sid") || undefined });
+    // Pop-out tabs arrive with autostart=1: the click already happened in the opener.
+    if (params.get("autostart") === "1") startMatch({ code, role, sid: params.get("sid") || undefined });
   }
 
   // Matrix widget: members + challenge events inside the room.
@@ -229,7 +284,15 @@
       const left = document.createElement("div");
       left.innerHTML = '<div class="who"></div><div class="meta"></div>';
       left.querySelector(".who").textContent = c.from.name + (c.to ? " → you" : " (open)");
-      left.querySelector(".meta").textContent = c.code;
+      const their = c.from && typeof c.from.ping === "number" ? c.from.ping : null;
+      const mine = state.serverPing;
+      let meta = c.code;
+      if (c.from.id !== state.myId && their !== null) {
+        meta += mine !== null
+          ? " · est. " + (their + mine) + " ms via server (" + TSL.Tuning.grade(their + mine) + ")"
+          : " · their ping " + their + " ms";
+      }
+      left.querySelector(".meta").textContent = meta;
       const btn = document.createElement("button"); btn.className = "btn btn-sm";
       if (c.from.id === state.myId) { btn.textContent = "Cancel"; btn.onclick = () => { state.matrix.send({ kind: "cancel", id: c.id }); state.seenChallenges.delete(c.id); renderChallenges(); }; }
       else { btn.textContent = "Accept"; btn.className = "btn btn-primary btn-sm"; btn.onclick = () => acceptChallenge(c); }
@@ -241,7 +304,7 @@
     const code = makeCode();
     const id = crypto.randomUUID();
     try {
-      await state.matrix.send({ kind: "challenge", id, code, from: { id: state.myId, name: myName() }, to: toId });
+      await state.matrix.send({ kind: "challenge", id, code, from: { id: state.myId, name: myName(), ping: state.serverPing }, to: toId });
     } catch (e) { return toast("Could not post challenge: " + (e.message || e), true); }
     state.challengeId = id;
     startMatch({ code, role: "host" });
@@ -257,7 +320,13 @@
   /* ---------- Match ---------- */
   function startMatch({ code, role, sid }) {
     state.name = myName(); localStorage.setItem("tsl.name", state.name);
+    if (popoutPref() && openPopout({ code, role, sid })) return;
     clearInterval(state.pollTimer);
+    state.current = { code, role, sid };
+    state.connected = false;
+    $("btn-popout").classList.toggle("hidden", isolatedTab);
+    $("delay-wrap").classList.toggle("hidden", role !== "host");
+    $("input-delay").value = String(TSL.Netplay.getInputDelay());
     show("screen-match");
     $("match-role").textContent = role === "host" ? "P1 · host" : "P2 · guest";
     $("match-code").textContent = code;
@@ -273,11 +342,56 @@
         else if (s.state === "hosting") setStatus("opening room…");
         else if (s.state === "waiting") setStatus(state.mode === "matrix" ? "waiting for your opponent to accept…" : "waiting for opponent · share " + shareLink(code));
         else if (s.state === "searching" || s.state === "joining") setStatus("looking for the host…");
-        else if (s.state === "connected") { setStatus("connected", "ok"); if (s.opponent) $("match-opponent").textContent = "vs " + s.opponent; }
+        else if (s.state === "connected") {
+          setStatus("connected", "ok");
+          if (s.opponent) $("match-opponent").textContent = "vs " + s.opponent;
+          if (!state.connected) { state.connected = true; $("btn-popout").classList.add("hidden"); }
+        }
         else if (s.state === "error") { setStatus(s.message, "err"); toast(s.message, true); }
-      }
+      },
+      onStats: renderStats
     });
   }
+
+  function renderStats(s) {
+    const el = $("net-stats"), parts = [];
+    if (s.role === "host" && s.emuFps !== null) parts.push(s.emuFps + " fps");
+    if (s.link) {
+      if (s.link.rttMs !== null) parts.push("ping " + s.link.rttMs + " ms");
+      if (s.link.streamFps !== null) parts.push("stream " + s.link.streamFps + " fps");
+      parts.push(s.link.route);
+      if (s.link.lossPct) parts.push(s.link.lossPct + "% loss");
+    }
+    if (s.threads) parts.push("threaded");
+    el.querySelector(".txt").textContent = parts.join(" · ") || "no link yet";
+    el.className = "netstats q-" + s.quality;
+
+    const warn = $("perf-warn");
+    let msg = "";
+    if (s.role === "host" && s.slow) {
+      msg = "Your emulator is running at " + s.emuFps + " fps (the game needs 60). ";
+      if (s.hidden) msg += "This tab is in the background; keep it in front.";
+      else if (inIframe && !isolatedTab) msg += "Use Pop out to run it in its own tab and keep that tab in front.";
+      else msg += "Close other heavy tabs or apps; CPS-3 emulation needs a fast CPU core.";
+    } else if (s.role === "guest" && s.link && s.link.streamFps !== null && s.link.streamFps < 40) {
+      msg = "The host's video is arriving at " + s.link.streamFps + " fps" + (s.link.route === "relay" ? " through a relay server" : "") + ". Expect choppy motion.";
+    }
+    warn.textContent = msg;
+    warn.classList.toggle("hidden", !msg);
+  }
+
+  $("input-delay").addEventListener("change", (e) => {
+    const d = TSL.Netplay.setInputDelay(e.target.value);
+    toast(d === 0 ? "Input delay off" : "Your inputs now land " + d + " frame" + (d > 1 ? "s" : "") + " later");
+  });
+  $("btn-popout").addEventListener("click", () => {
+    const m = state.current;
+    if (!m) return;
+    TSL.Netplay.leave();
+    const w = window.open(popoutUrl(m), "_blank");
+    if (!w) { toast("Your browser blocked the new tab.", true); return; }
+    location.href = cleanUrl();   // EmulatorJS cannot be torn down in place
+  });
   function setStatus(text, cls) { const el = $("match-status"); el.textContent = text; el.className = "status" + (cls ? " " + cls : ""); }
 
   $("btn-leave").addEventListener("click", () => {
@@ -302,7 +416,8 @@
     state.mode = "direct";
     $("mode-badge").textContent = "match link";
   }
-  if (params.get("name") && !state.name) { state.name = params.get("name"); $("player-name").value = state.name; }
+  // An explicit name in the link (pop-out tab, bot link) wins over a stored one.
+  if (params.get("name")) { state.name = params.get("name"); $("player-name").value = state.name; }
 
   await refreshRom();
   if (state.rom) enterLobby(); else show("screen-rom");

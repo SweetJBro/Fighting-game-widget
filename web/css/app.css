@@ -123,3 +123,21 @@ input[readonly] { color: var(--muted); }
   .brand-text { display: none; }
   .controls td { padding-right: 10px; }
 }
+
+/* Phase 1: connection quality, input delay, pop-out, performance */
+.badge.q-good { border-color: var(--ok); color: var(--ok); }
+.badge.q-ok { border-color: var(--accent-2); color: var(--accent-2); }
+.badge.q-poor { border-color: var(--danger); color: var(--danger); }
+.check { display: flex; gap: 8px; align-items: flex-start; margin-top: 14px; font-size: 14px; cursor: pointer; }
+.check input { margin-top: 3px; }
+.netstats { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.netstats .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.netstats.q-good .dot { background: var(--ok); }
+.netstats.q-ok .dot { background: var(--accent-2); }
+.netstats.q-poor .dot { background: var(--danger); }
+.delay { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.delay select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+.perfwarn { padding: 8px 12px; background: #3a2a10; color: #ffd28a; border-bottom: 1px solid #6b4a14; font-size: 14px; }
+.matchbar { flex-wrap: wrap; }
+.matchbar-right { flex-wrap: wrap; }
+@media (max-width: 600px) { .netstats .txt { display: none; } }

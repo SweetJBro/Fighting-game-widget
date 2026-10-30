@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3rd Strike Lobby</title>
-  <link rel="stylesheet" href="css/app.css?v=12">
+  <link rel="stylesheet" href="css/app.css?v=18">
 </head>
 <body>
   <header class="topbar">
@@ -15,6 +15,7 @@
     <div class="topbar-right">
       <span id="mode-badge" class="badge">standalone</span>
       <span id="rom-badge" class="badge badge-muted">no ROM</span>
+      <span id="ping-badge" class="badge badge-muted" title="Round trip from this browser to the netplay server">server …</span>
       <button id="btn-rom-settings" class="btn btn-ghost btn-sm" title="Change ROM">ROM</button>
     </div>
   </header>
@@ -74,6 +75,12 @@
             <button id="btn-open-challenge" class="btn btn-primary hidden">Post open challenge</button>
           </div>
 
+          <label id="popout-row" class="check">
+            <input id="popout-pref" type="checkbox">
+            <span>Open matches in a new tab <span class="hint">(a full-size tab outside the chat that you can keep in front; browsers slow down hidden tabs and small frames)</span></span>
+          </label>
+          <div id="popout-notice" class="notice hidden"></div>
+
           <div id="join-row" class="row">
             <label class="field">
               <span>Join by code</span>
@@ -114,11 +121,21 @@
           <span id="match-status" class="status">starting…</span>
         </div>
         <div class="matchbar-right">
+          <span id="net-stats" class="netstats" title="Connection to your opponent and emulator speed"><span class="dot"></span><span class="txt">no link yet</span></span>
           <span id="match-opponent" class="hint"></span>
+          <label id="delay-wrap" class="delay hidden" title="Delays YOUR inputs by this many frames so the match feels the same on both ends. The guest's lag does not change. 0 = off.">
+            Input delay
+            <select id="input-delay">
+              <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
+              <option>5</option><option>6</option><option>7</option><option>8</option>
+            </select>
+          </label>
+          <button id="btn-popout" class="btn btn-ghost btn-sm hidden" title="Restart this match in its own full-size tab, outside the chat">Pop out</button>
           <button id="btn-controls" class="btn btn-ghost btn-sm">Controls</button>
           <button id="btn-leave" class="btn btn-danger btn-sm">Leave</button>
         </div>
       </div>
+      <div id="perf-warn" class="perfwarn hidden"></div>
       <div id="ejs-wrap">
         <div id="ejs"></div>
       </div>
@@ -137,10 +154,11 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/config.js?v=12"></script>
-  <script src="js/romstore.js?v=12"></script>
-  <script src="js/netplay-bridge.js?v=12"></script>
-  <script src="js/matrix-lobby.js?v=12"></script>
-  <script src="js/app.js?v=12"></script>
+  <script src="js/config.js?v=18"></script>
+  <script src="js/romstore.js?v=18"></script>
+  <script src="js/netplay-tuning.js?v=18"></script>
+  <script src="js/netplay-bridge.js?v=18"></script>
+  <script src="js/matrix-lobby.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
 </body>
 </html>

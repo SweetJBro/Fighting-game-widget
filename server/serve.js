@@ -5,7 +5,13 @@
    PORT              listen port (default 8080)
    NETPLAY_URL       public URL of the EmulatorJS netplay server (default http://<host>:4000, resolved in the browser)
    ICE_SERVERS       JSON array of RTCIceServer objects
-   EJS_DATA_PATH     EmulatorJS data dir (default CDN)
+   EJS_DATA_PATH     EmulatorJS data dir (default: ejs/ when scripts/fetch-emulatorjs.sh has
+                     installed a pinned copy into web/ejs/, otherwise the "latest" CDN)
+   STREAM_FPS              host video capture/encode fps, 15-60 (default 60)
+   STREAM_BITRATE_DIRECT   max video bitrate on a direct peer path, bps (default 4000000)
+   STREAM_BITRATE_RELAY    max video bitrate through TURN, bps (default 1500000)
+   INPUT_DELAY_DEFAULT     host input delay in frames, 0-8, until a player picks one (default 3)
+   THREADS=0               never use the threaded core, even in an isolated pop-out tab
    GAME_ID           integer namespace on the netplay server (default 33)
    PUBLIC_URL        public URL of this page (for share links)
    HOST              bind address (default 0.0.0.0; use 127.0.0.1 to keep a dev server off the LAN)
@@ -66,6 +72,13 @@ function config() {
   if (rom) out.packagedRom = { name: rom.name, url: rom.url, size: rom.size };
   if (process.env.NETPLAY_URL) out.netplayUrl = process.env.NETPLAY_URL;
   if (process.env.EJS_DATA_PATH) out.ejsDataPath = process.env.EJS_DATA_PATH;
+  else if (fs.existsSync(path.join(ROOT, "ejs", "loader.js"))) out.ejsDataPath = "ejs/";
+  const num = (k) => (process.env[k] !== undefined && process.env[k] !== "" && Number.isFinite(Number(process.env[k])) ? Number(process.env[k]) : undefined);
+  if (num("STREAM_FPS") !== undefined) out.streamFps = num("STREAM_FPS");
+  if (num("STREAM_BITRATE_DIRECT") !== undefined) out.streamBitrateDirect = num("STREAM_BITRATE_DIRECT");
+  if (num("STREAM_BITRATE_RELAY") !== undefined) out.streamBitrateRelay = num("STREAM_BITRATE_RELAY");
+  if (num("INPUT_DELAY_DEFAULT") !== undefined) out.inputDelayDefault = num("INPUT_DELAY_DEFAULT");
+  if (process.env.THREADS === "0") out.threads = false;
   if (process.env.GAME_ID) out.gameId = Number(process.env.GAME_ID);
   if (process.env.PUBLIC_URL) out.publicUrl = process.env.PUBLIC_URL;
   if (process.env.ICE_SERVERS) {
@@ -120,6 +133,15 @@ function handle(req, res) {
     // Allow Matrix clients (Element etc.) to iframe this page as a widget.
     // Do NOT send X-Frame-Options here; frame-ancestors is deliberately open.
     headers["content-security-policy"] = "frame-ancestors *";
+    // Pop-out tabs (?isolate=1) become cross-origin isolated so SharedArrayBuffer,
+    // and with it EmulatorJS's threaded core, is available. Only on request: COEP
+    // on the widget iframe would buy nothing (the parent client is not isolated).
+    // "credentialless" lets the no-cors CDN script and CORS core downloads through
+    // without CORP headers (Chromium 110+, Firefox 119+; Safari stays unthreaded).
+    if (f.endsWith(".html") && url.searchParams.get("isolate") === "1") {
+      headers["cross-origin-opener-policy"] = "same-origin";
+      headers["cross-origin-embedder-policy"] = "credentialless";
+    }
     sendFile(res, f, headers);
   }
 }
