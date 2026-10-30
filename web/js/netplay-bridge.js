@@ -14,6 +14,18 @@ TSL.Netplay = (() => {
   let findTimer = null;
   let loaderInjected = false;
   let monitorTimer = null;
+  let rosterTimer = null;
+
+  // ---- roles ------------------------------------------------------------
+  // Every joiner announces an intent ("guest" or "spectator"). The host is the
+  // single authority: the first present joiner who wants to play becomes Player 2,
+  // everyone else watches. The host remaps that peer's inputs to player 1 and
+  // drops everyone else's, so a spectator who connects first can never steal P2.
+  const intents = {};            // host: userid -> { intent, name }
+  let roster = null;             // everyone: { host, guest, guestName, hostName, spectators: [names] }
+  let lastRosterJson = "";
+
+  function sendTsl(msg) { const n = np(); if (n) n.sendMessage({ tsl: msg }); }
 
   // ---- host input delay -------------------------------------------------
   const DELAY_KEY = "tsl.inputDelay";
@@ -155,18 +167,37 @@ TSL.Netplay = (() => {
     document.body.appendChild(s);
   }
 
+  /** EmulatorJS main calls Module.EmulatorJSGetState, which the published fbneo
+      core (2025-06-14 build) does not export. Rebuild it from the older
+      save_state_info export so EmulatorJS's own save/load paths work. */
+  function shimSaveStates() {
+    const gm = emu() && emu().gameManager;
+    const M = gm && gm.Module;
+    if (!M || typeof M.EmulatorJSGetState === "function" || typeof M._save_state_info !== "function") return;
+    const info = M.cwrap("save_state_info", "string", []);
+    M.EmulatorJSGetState = () => {
+      const [size, ptr] = info().split("|").map((x) => parseInt(x, 10));
+      if (!(size > 0)) throw new Error("core returned no save state");
+      return M.HEAPU8.slice(ptr, ptr + size);
+    };
+  }
+
   function onGameStart() {
     const n = np();
     if (!n) { report("error", { message: "EmulatorJS netplay module missing." }); return; }
     n.name = opts.name;
     if (!n.updateList) n.defineNetplayFunctions();
     if (!n.url) { report("error", { message: "Netplay server URL is not configured." }); return; }
+    shimSaveStates();
     installInputDelay();
+    hookMessages(n);
     startMonitor();
 
     if (opts.role === "host") {
       report("hosting");
-      n.openRoom(opts.code, 2, "");
+      TSL.Tuning.inputFilter = hostInputFilter;
+      // Player 2 plus up to maxSpectators watchers (each costs the host one more video encode).
+      n.openRoom(opts.code, 2 + maxSpectators(), "");
     } else {
       report("searching");
       findRoomAndJoin();
@@ -189,7 +220,7 @@ TSL.Netplay = (() => {
         if ((sid && id === sid) || (!sid && r.room_name === opts.code)) { entry = r; sid = id; break; }
       }
       if (entry && sid) {
-        if (entry.current >= entry.max) { report("error", { message: "That match is already full." }); return; }
+        if (entry.current >= entry.max) { report("error", { message: opts.role === "spectator" ? "No spectator seats left in that match." : "That match is already full." }); return; }
         n.joinRoom(sid, entry.room_name, entry.max || 2, "");
         return;
       }
@@ -198,17 +229,104 @@ TSL.Netplay = (() => {
     attempt();
   }
 
+  function maxSpectators() {
+    const v = Number(TSL.config && TSL.config.maxSpectators);
+    return Number.isFinite(v) ? Math.max(0, Math.min(6, Math.round(v))) : 2;
+  }
+
+  /** Route our own {tsl: ...} messages; everything else goes to EmulatorJS. */
+  function hookMessages(n) {
+    if (n.__tslHooked) return;
+    n.__tslHooked = true;
+    const orig = n.dataMessage.bind(n);
+    n.dataMessage = (d) => {
+      if (d && d.tsl) { onTsl(d.tsl); return; }
+      orig(d);
+    };
+  }
+
+  function onTsl(m) {
+    const n = np();
+    if (!n) return;
+    if (n.owner) {
+      if (m.hello && m.hello.userid) { intents[m.hello.userid] = { intent: m.hello.intent, name: m.hello.name }; updateRoster(); }
+      if (m.rematch === "request" && opts.onRematchRequest) opts.onRematchRequest(m.name || "Your opponent");
+    } else {
+      if (m.roster) roster = m.roster;
+      if (m.rematch === "done" && opts.onRematchDone) opts.onRematchDone();
+    }
+  }
+
+  /** Host: recompute who is Player 2 and broadcast the roster when it changes. */
+  function updateRoster(force) {
+    const n = np();
+    if (!n || !n.owner) return;
+    const present = Object.values(n.players || {}).filter((p) => p.userid !== n.playerID);
+    const ids = present.map((p) => p.userid);
+    let guest = roster && ids.includes(roster.guest) ? roster.guest : null;
+    if (!guest) {
+      const first = present.find((p) => intents[p.userid] && intents[p.userid].intent === "guest");
+      guest = first ? first.userid : null;
+    }
+    const nameOf = (id) => {
+      const p = present.find((q) => q.userid === id);
+      return (intents[id] && intents[id].name) || (p && p.player_name) || "Player";
+    };
+    roster = {
+      host: n.playerID, hostName: opts.name,
+      guest, guestName: guest ? nameOf(guest) : null,
+      spectators: ids.filter((id) => id !== guest).map(nameOf)
+    };
+    const json = JSON.stringify(roster);
+    if (force || json !== lastRosterJson) { lastRosterJson = json; sendTsl({ roster }); }
+  }
+
+  /** Host: decide what an incoming data-channel input becomes. */
+  function hostInputFilter(pc, d) {
+    if (!d || typeof d.player !== "number") return d;          // control messages pass
+    const n = np();
+    if (!n || !roster || !roster.guest) return null;
+    let peerId = null;
+    for (const [id, entry] of Object.entries(n.peerConnections || {})) if (entry && entry.pc === pc) { peerId = id; break; }
+    const p = Object.values(n.players || {}).find((q) => q.socketId === peerId);
+    if (!p || p.userid !== roster.guest) return null;            // spectator or unknown: ignore
+    return d.player === 1 ? d : Object.assign({}, d, { player: 1 });
+  }
+
   function startStatusLoop() {
     clearInterval(statusTimer);
+    clearInterval(rosterTimer);
+    // Joiners repeat their hello (cheap, survives a host that joined the socket late);
+    // the host re-sends the roster so late arrivals learn it.
+    rosterTimer = setInterval(() => {
+      const n = np();
+      if (!n || !emu() || !emu().isNetplay) return;
+      if (n.owner) updateRoster(true);
+      else sendTsl({ hello: { userid: n.playerID, intent: opts.role === "host" ? "guest" : opts.role, name: opts.name } });
+    }, 2000);
     statusTimer = setInterval(() => {
       const e = emu(), n = np();
       if (!e || !n) return;
       if (!e.isNetplay) return;
-      const players = Object.values(n.players || {});
+      const count = Object.keys(n.players || {}).length;
+      if (n.owner) {
+        updateRoster();
+        if (roster && roster.guest) report("connected", { opponent: roster.guestName, spectators: roster.spectators.length });
+        else report("waiting", { spectators: roster ? roster.spectators.length : 0 });
+        return;
+      }
       const me = n.playerID;
-      const other = players.find((p) => p.userid !== me);
-      if (players.length >= 2) report("connected", { opponent: other ? other.player_name : "opponent", players: players.length });
-      else report(opts.role === "host" ? "waiting" : "joining", { players: players.length });
+      if (!roster) { report("joining", { players: count }); return; }
+      if (opts.role === "spectator" || (roster.guest && roster.guest !== me)) {
+        report("watching", {
+          host: roster.hostName, guest: roster.guestName,
+          bumped: opts.role === "guest" && !!roster.guest && roster.guest !== me
+        });
+      } else if (roster.guest === me) {
+        report("connected", { opponent: roster.hostName, spectators: roster.spectators.length });
+      } else {
+        report("joining", { players: count });
+      }
     }, 1000);
   }
 
@@ -232,9 +350,14 @@ TSL.Netplay = (() => {
         slowStreak = fps !== null && fps < 50 ? slowStreak + 1 : 0;
       }
       const link = e.isNetplay ? await TSL.Tuning.sample() : null;
+      // ICE gave up on every peer and nothing is connected: no route between the
+      // two networks. Almost always a strict NAT/firewall that needs TURN.
+      const linkFailed = e.isNetplay && TSL.Tuning.failures() > 0 && TSL.Tuning.connectedCount() === 0;
       if (opts && opts.onStats) {
         opts.onStats({
-          role: hosting ? "host" : "guest",
+          role: hosting ? "host" : opts.role,
+          linkFailed,
+          usingTurn: (TSL.config.iceServers || []).some((s) => [].concat(s.urls || []).some((u) => /^turns?:/i.test(u))),
           emuFps: fps,
           slow: slowStreak >= 3,
           hidden: document.hidden,
@@ -257,7 +380,20 @@ TSL.Netplay = (() => {
       try { localStorage.setItem(DELAY_KEY, String(inputDelay)); } catch (_) {}
       return inputDelay;
     },
-    /** opts: { rom:{file,name}, code, role:'host'|'guest', sid?, name, onStatus, onStats } */
+    /** Host: restart the game for a rematch, keeping room, peers and stream. */
+    rematch() {
+      const e = emu(), n = np();
+      if (!e || !e.gameManager || !n || !n.owner) return false;
+      queue.length = 0;
+      e.gameManager.restart();
+      sendTsl({ rematch: "done" });
+      return true;
+    },
+    /** Guest: ask the host for a rematch. */
+    requestRematch() { sendTsl({ rematch: "request", name: opts && opts.name }); },
+    getRoster() { return roster; },
+    /** opts: { rom:{file,name}, code, role:'host'|'guest'|'spectator', sid?, name,
+                onStatus, onStats, onRematchRequest(name), onRematchDone() } */
     start(o) {
       opts = o;
       inputDelay = readDelay();   // config.json (inputDelayDefault) has loaded by now
@@ -266,7 +402,7 @@ TSL.Netplay = (() => {
       injectLoader();
     },
     leave() {
-      clearInterval(statusTimer); clearTimeout(findTimer); clearInterval(monitorTimer);
+      clearInterval(statusTimer); clearTimeout(findTimer); clearInterval(monitorTimer); clearInterval(rosterTimer);
       const n = np();
       try { if (n && emu().isNetplay) n.leaveRoom(); } catch (_) {}
     },

@@ -73,13 +73,15 @@ async function onMessage(m) {
     await post(m.channel_id,
       `🥊 **${authorName}** challenges **${tName}** — match **${code}**\n` +
       `<@${author.id}> host (P1): ${link(code, "host")}\n` +
-      `<@${target.id}> join (P2): ${link(code, "guest")}`,
+      `<@${target.id}> join (P2): ${link(code, "guest")}\n` +
+      `Watch: ${link(code, "spectator")}`,
       [author.id, target.id]);
   } else {
     await post(m.channel_id,
       `🥊 **${authorName}** is looking for a fight — match **${code}**\n` +
       `<@${author.id}> host (P1): ${link(code, "host")}\n` +
-      `Anyone, join (P2): ${link(code, "guest")}`,
+      `Anyone, join (P2): ${link(code, "guest")}\n` +
+      `Watch: ${link(code, "spectator")}`,
       [author.id]);
   }
 }

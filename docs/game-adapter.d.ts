@@ -53,19 +53,11 @@ export interface InputBinding {
   label: string;
 }
 
-export type NetplayMode = "streaming" | "rollback";
-
+/** Netplay is host streaming only: the host runs the game, others send inputs or watch. */
 export interface NetplaySpec {
-  /** Modes this game is known to work with, best first. */
-  modes: NetplayMode[];
-  preferredMode: NetplayMode;
-  /** Host input delay in frames for streaming mode (0-8). */
+  /** Host input delay in frames (0-8). */
   defaultInputDelay: number;
-  /** Rollback only: frames of prediction before the session stalls. */
-  maxRollbackFrames?: number;
-  /** Rollback only: input delay applied on both sides before predicting. */
-  rollbackInputDelay?: number;
-  /** Players per match (fighting games: 2). Extra netplay slots become spectators. */
+  /** Players per match (fighting games: 2). Extra netplay seats become spectators. */
   players: number;
   maxSpectators?: number;
 }
@@ -75,7 +67,7 @@ export interface PerformanceSpec {
   fps: number;
   /** Below this sustained host fps the warning banner shows. */
   warnBelowFps: number;
-  /** Measured savestate size, bytes; rollback mode refuses games above a budget. */
+  /** Measured save-state size in bytes (instant rematch keeps one in memory). */
   stateBytes?: number;
 }
 
@@ -134,7 +126,7 @@ export declare const sfiii3nr1: GameAdapter;
     4: { key: "up arrow", pad: "DPAD_UP", label: "Up" }, 5: { key: "down arrow", pad: "DPAD_DOWN", label: "Down" },
     6: { key: "left arrow", pad: "DPAD_LEFT", label: "Left" }, 7: { key: "right arrow", pad: "DPAD_RIGHT", label: "Right" }
   },
-  netplay: { modes: ["streaming"], preferredMode: "streaming", defaultInputDelay: 3, players: 2, maxSpectators: 2 },
+  netplay: { defaultInputDelay: 3, players: 2, maxSpectators: 2 },
   performance: { fps: 59.6, warnBelowFps: 50, stateBytes: 10295432 }
 }
 */

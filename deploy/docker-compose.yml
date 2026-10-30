@@ -16,6 +16,7 @@ services:
       STREAM_BITRATE_RELAY: ${STREAM_BITRATE_RELAY:-1500000}
       INPUT_DELAY_DEFAULT: ${INPUT_DELAY_DEFAULT:-3}
       THREADS: ${THREADS:-1}
+      MAX_SPECTATORS: ${MAX_SPECTATORS:-2}
     restart: unless-stopped
 
   netplay:

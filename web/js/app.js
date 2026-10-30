@@ -36,10 +36,10 @@
     const v = ($("player-name").value || state.name || "").trim();
     return v || "Player";
   }
-  function shareLink(code) {
+  function shareLink(code, role) {
     const u = new URL(cfg.publicUrl, location.href);
     u.searchParams.set("match", code);
-    u.searchParams.set("role", "guest");
+    u.searchParams.set("role", role || "guest");
     return u.toString();
   }
   function cleanUrl() {
@@ -204,9 +204,13 @@
       left.querySelector(".meta").textContent = r.room_name + " · " + r.current + "/" + r.max;
       const btn = document.createElement("button");
       btn.className = "btn btn-sm";
-      btn.textContent = r.current >= r.max ? "Full" : "Join";
-      btn.disabled = r.current >= r.max;
-      btn.onclick = () => startMatch({ code: r.room_name, sid, role: "guest" });
+      // One seat is Player 2; the rest are spectator seats. The host decides who
+      // actually gets P2, so a late "Join" quietly becomes a spectator.
+      const open = r.current < 2, full = r.current >= r.max;
+      btn.textContent = full ? "Full" : open ? "Join" : "Watch";
+      btn.disabled = full;
+      if (open) btn.className = "btn btn-primary btn-sm";
+      btn.onclick = () => startMatch({ code: r.room_name, sid, role: open ? "guest" : "spectator" });
       li.append(left, btn); ul.appendChild(li);
     }
   }
@@ -214,12 +218,16 @@
   // Direct link (from the Fluxer bot or a shared link): ?match=CODE&role=host|guest
   function startDirect() {
     const code = params.get("match").toUpperCase();
-    const role = params.get("role") === "host" ? "host" : "guest";
+    const role = ["host", "guest", "spectator"].includes(params.get("role")) ? params.get("role") : "guest";
     $("lobby-title").textContent = "Match " + code;
-    $("lobby-subtitle").textContent = role === "host" ? "You will host this match. Pick a name and hit Fight." : "You will join this match as Player 2. Pick a name and hit Fight.";
+    $("lobby-subtitle").textContent = {
+      host: "You will host this match. Pick a name and hit Fight.",
+      guest: "You will join this match as Player 2. Pick a name and hit Fight.",
+      spectator: "You will watch this match. Pick a name and hit Watch."
+    }[role];
     $("join-row").classList.add("hidden");
     $("list-title").parentElement.classList.add("hidden");
-    $("btn-host").textContent = "Fight";
+    $("btn-host").textContent = role === "spectator" ? "Watch" : "Fight";
     $("btn-host").onclick = () => startMatch({ code, role, sid: params.get("sid") || undefined });
     // Pop-out tabs arrive with autostart=1: the click already happened in the opener.
     if (params.get("autostart") === "1") startMatch({ code, role, sid: params.get("sid") || undefined });
@@ -265,7 +273,7 @@
       state.seenChallenges.set(c.id, { id: c.id, code: c.code, from: c.from || { id: sender, name: sender }, to: c.to || null, ts, sender, taken: false });
     } else if (c.kind === "accept" && c.id) {
       const ch = state.seenChallenges.get(c.id);
-      if (ch) ch.taken = true;
+      if (ch) { ch.taken = true; ch.by = c.by || { id: sender, name: sender }; ch.takenTs = ts; }
       if (ch && state.challengeId === c.id && c.by) $("match-opponent").textContent = "vs " + c.by.name;
     } else if (c.kind === "cancel" && c.id) {
       state.seenChallenges.delete(c.id);
@@ -298,6 +306,25 @@
       else { btn.textContent = "Accept"; btn.className = "btn btn-primary btn-sm"; btn.onclick = () => acceptChallenge(c); }
       li.append(left, btn); ul.appendChild(li);
     }
+    renderLive(cutoff);
+  }
+
+  /** Accepted challenges between two other members: offer to watch. */
+  function renderLive(cutoff) {
+    const live = [...state.seenChallenges.values()].filter((c) =>
+      c.taken && c.by && (c.takenTs || c.ts) >= cutoff && c.from.id !== state.myId && c.by.id !== state.myId);
+    $("live-card").classList.toggle("hidden", live.length === 0);
+    const ul = $("live-list"); ul.innerHTML = "";
+    for (const c of live.sort((a, b) => (b.takenTs || b.ts) - (a.takenTs || a.ts))) {
+      const li = document.createElement("li");
+      const left = document.createElement("div");
+      left.innerHTML = '<div class="who"></div><div class="meta"></div>';
+      left.querySelector(".who").textContent = c.from.name + " vs " + c.by.name;
+      left.querySelector(".meta").textContent = c.code;
+      const btn = document.createElement("button"); btn.className = "btn btn-sm"; btn.textContent = "Watch";
+      btn.onclick = () => startMatch({ code: c.code, role: "spectator" });
+      li.append(left, btn); ul.appendChild(li);
+    }
   }
 
   async function sendChallenge(toId) {
@@ -318,8 +345,14 @@
   }
 
   /* ---------- Match ---------- */
-  function startMatch({ code, role, sid }) {
+  async function startMatch({ code, role, sid }) {
     state.name = myName(); localStorage.setItem("tsl.name", state.name);
+    // Fail fast with a clear message instead of a silent socket.io retry loop.
+    if (state.serverPing === null) await refreshPing();
+    if (state.serverPing === null) {
+      toast("Can't reach the netplay server at " + cfg.netplayUrl + ". Check that it is running and that NETPLAY_URL points at it.", true);
+      return;
+    }
     if (popoutPref() && openPopout({ code, role, sid })) return;
     clearInterval(state.pollTimer);
     state.current = { code, role, sid };
@@ -328,7 +361,9 @@
     $("delay-wrap").classList.toggle("hidden", role !== "host");
     $("input-delay").value = String(TSL.Netplay.getInputDelay());
     show("screen-match");
-    $("match-role").textContent = role === "host" ? "P1 · host" : "P2 · guest";
+    $("match-role").textContent = { host: "P1 · host", guest: "P2 · guest", spectator: "watching" }[role];
+    $("btn-rematch").classList.add("hidden");
+    $("btn-watch-link").classList.toggle("hidden", role !== "host");
     $("match-code").textContent = code;
     if (role === "host") {
       state.hostingCode = code;
@@ -343,13 +378,29 @@
         else if (s.state === "waiting") setStatus(state.mode === "matrix" ? "waiting for your opponent to accept…" : "waiting for opponent · share " + shareLink(code));
         else if (s.state === "searching" || s.state === "joining") setStatus("looking for the host…");
         else if (s.state === "connected") {
-          setStatus("connected", "ok");
+          setStatus("connected" + (s.spectators ? " · " + s.spectators + " watching" : ""), "ok");
           if (s.opponent) $("match-opponent").textContent = "vs " + s.opponent;
-          if (!state.connected) { state.connected = true; $("btn-popout").classList.add("hidden"); }
+          if (!state.connected) {
+            state.connected = true;
+            $("btn-popout").classList.add("hidden");
+            $("btn-rematch").textContent = role === "host" ? "Rematch" : "Ask for rematch";
+            $("btn-rematch").classList.remove("hidden");
+          }
+        }
+        else if (s.state === "watching") {
+          setStatus("watching " + (s.host || "host") + (s.guest ? " vs " + s.guest : " (waiting for an opponent)"), "ok");
+          $("match-role").textContent = "watching";
+          $("btn-popout").classList.add("hidden");
+          if (s.bumped && !state.bumpedNotified) { state.bumpedNotified = true; toast("This match already has an opponent, so you are watching."); }
         }
         else if (s.state === "error") { setStatus(s.message, "err"); toast(s.message, true); }
       },
-      onStats: renderStats
+      onStats: renderStats,
+      onRematchRequest: (who) => {
+        $("rematch-ask-text").textContent = who + " wants a rematch. This restarts the game for everyone.";
+        $("rematch-ask").classList.remove("hidden");
+      },
+      onRematchDone: () => toast("The host restarted the game. Insert coin and press Start.")
     });
   }
 
@@ -368,12 +419,17 @@
 
     const warn = $("perf-warn");
     let msg = "";
-    if (s.role === "host" && s.slow) {
+    warn.classList.remove("err");
+    if (s.linkFailed) {
+      msg = "Could not connect to the other player directly. One of you is behind a strict router or firewall. " +
+        (s.usingTurn ? "The configured TURN relay did not help either; check its address and credentials." : "The server operator needs to add a TURN relay to ICE_SERVERS.");
+      warn.classList.add("err");
+    } else if (s.role === "host" && s.slow) {
       msg = "Your emulator is running at " + s.emuFps + " fps (the game needs 60). ";
       if (s.hidden) msg += "This tab is in the background; keep it in front.";
       else if (inIframe && !isolatedTab) msg += "Use Pop out to run it in its own tab and keep that tab in front.";
       else msg += "Close other heavy tabs or apps; CPS-3 emulation needs a fast CPU core.";
-    } else if (s.role === "guest" && s.link && s.link.streamFps !== null && s.link.streamFps < 40) {
+    } else if (s.role !== "host" && s.link && s.link.streamFps !== null && s.link.streamFps < 40) {
       msg = "The host's video is arriving at " + s.link.streamFps + " fps" + (s.link.route === "relay" ? " through a relay server" : "") + ". Expect choppy motion.";
     }
     warn.textContent = msg;
@@ -383,6 +439,23 @@
   $("input-delay").addEventListener("change", (e) => {
     const d = TSL.Netplay.setInputDelay(e.target.value);
     toast(d === 0 ? "Input delay off" : "Your inputs now land " + d + " frame" + (d > 1 ? "s" : "") + " later");
+  });
+  $("btn-rematch").addEventListener("click", () => {
+    if (state.current && state.current.role === "host") {
+      if (TSL.Netplay.rematch()) { toast("Game restarted. Insert coin and press Start."); $("rematch-ask").classList.add("hidden"); }
+    } else {
+      TSL.Netplay.requestRematch();
+      toast("Asked the host for a rematch.");
+    }
+  });
+  $("btn-rematch-accept").addEventListener("click", () => {
+    if (TSL.Netplay.rematch()) toast("Game restarted. Insert coin and press Start.");
+    $("rematch-ask").classList.add("hidden");
+  });
+  $("btn-rematch-dismiss").addEventListener("click", () => $("rematch-ask").classList.add("hidden"));
+  $("btn-watch-link").addEventListener("click", () => {
+    if (!state.current) return;
+    navigator.clipboard.writeText(shareLink(state.current.code, "spectator")).then(() => toast("Watch link copied"));
   });
   $("btn-popout").addEventListener("click", () => {
     const m = state.current;

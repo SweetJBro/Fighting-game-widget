@@ -141,3 +141,8 @@ input[readonly] { color: var(--muted); }
 .matchbar { flex-wrap: wrap; }
 .matchbar-right { flex-wrap: wrap; }
 @media (max-width: 600px) { .netstats .txt { display: none; } }
+
+/* Rematch prompt */
+.notice-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel-2); border-bottom: 1px solid var(--border); font-size: 14px; flex-wrap: wrap; }
+.notice-bar span { flex: 1; min-width: 160px; }
+.perfwarn.err { background: #3a1414; color: #ffb3b3; border-bottom-color: #6b1f1f; }

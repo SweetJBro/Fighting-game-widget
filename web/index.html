@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3rd Strike Lobby</title>
-  <link rel="stylesheet" href="css/app.css?v=18">
+  <link rel="stylesheet" href="css/app.css?v=19">
 </head>
 <body>
   <header class="topbar">
@@ -105,6 +105,11 @@
           <p id="list-empty" class="hint">Nobody is waiting right now.</p>
         </div>
 
+        <div id="live-card" class="card hidden">
+          <h3>Live matches</h3>
+          <ul id="live-list" class="list"></ul>
+        </div>
+
         <div id="members-card" class="card hidden">
           <h3>In this room</h3>
           <ul id="member-list" class="list"></ul>
@@ -130,10 +135,17 @@
               <option>5</option><option>6</option><option>7</option><option>8</option>
             </select>
           </label>
+          <button id="btn-rematch" class="btn btn-sm hidden">Rematch</button>
+          <button id="btn-watch-link" class="btn btn-ghost btn-sm hidden" title="Copy a link that lets others watch this match">Watch link</button>
           <button id="btn-popout" class="btn btn-ghost btn-sm hidden" title="Restart this match in its own full-size tab, outside the chat">Pop out</button>
           <button id="btn-controls" class="btn btn-ghost btn-sm">Controls</button>
           <button id="btn-leave" class="btn btn-danger btn-sm">Leave</button>
         </div>
+      </div>
+      <div id="rematch-ask" class="notice-bar hidden">
+        <span id="rematch-ask-text"></span>
+        <button id="btn-rematch-accept" class="btn btn-primary btn-sm">Rematch</button>
+        <button id="btn-rematch-dismiss" class="btn btn-ghost btn-sm">Not now</button>
       </div>
       <div id="perf-warn" class="perfwarn hidden"></div>
       <div id="ejs-wrap">
@@ -154,11 +166,11 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/config.js?v=18"></script>
-  <script src="js/romstore.js?v=18"></script>
-  <script src="js/netplay-tuning.js?v=18"></script>
-  <script src="js/netplay-bridge.js?v=18"></script>
-  <script src="js/matrix-lobby.js?v=18"></script>
-  <script src="js/app.js?v=18"></script>
+  <script src="js/config.js?v=19"></script>
+  <script src="js/romstore.js?v=19"></script>
+  <script src="js/netplay-tuning.js?v=19"></script>
+  <script src="js/netplay-bridge.js?v=19"></script>
+  <script src="js/matrix-lobby.js?v=19"></script>
+  <script src="js/app.js?v=19"></script>
 </body>
 </html>

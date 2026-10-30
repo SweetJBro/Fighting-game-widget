@@ -7,7 +7,7 @@ Play **Street Fighter III: 3rd Strike** against people in your community, from t
 * **Fluxer**: Fluxer has no embedded-app surface, so a bot listens for `!fight @someone` and posts personalised host/join links to the lobby page.
 * **Anywhere else**: the page works on its own. Host a match, share the link.
 
-Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core (CPS-3 driver) in WebAssembly. Netplay is EmulatorJS's built-in mode: the **host runs the game and streams video/audio to the guest over WebRTC; the guest's inputs go back as Player 2** through a small signalling server. It is not rollback netcode. Expect roughly one network round-trip of input lag on the guest side, so it suits casual sets and same-region play rather than tournaments. See [docs/ROADMAP.md](docs/ROADMAP.md) for where this is going.
+Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core (CPS-3 driver) in WebAssembly. Netplay is EmulatorJS's built-in mode: the **host runs the game and streams video/audio to the guest over WebRTC; the guest's inputs go back as Player 2** over a WebRTC data channel. A small signalling server only sets up the connection. It is not rollback netcode. Expect roughly one network round-trip of input lag on the guest side, so it suits casual sets and same-region play rather than tournaments. See [docs/ROADMAP.md](docs/ROADMAP.md) for where this is going.
 
 ## Netplay feel and connection quality
 
@@ -16,6 +16,13 @@ Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core (CPS-3 
 * **Pop out.** "Open matches in a new tab" (on by default inside a chat client) or the Pop out button runs the match in its own full-size tab. That tab is cross-origin isolated (`?isolate=1` gets COOP/COEP), so EmulatorJS also loads its threaded core; on CPS-3 that measured no faster, so the point is a tab you keep in front, outside the chat.
 * **Connection quality.** The top bar shows your round trip to the netplay server. Matrix challenges carry the challenger's server ping, so the accepter sees an estimate before accepting. During a match the bar shows emulator fps (host), peer ping, stream fps, direct or relay route and packet loss, with a coloured dot.
 * **Performance warning.** If the host's emulator stays under 50 fps for three seconds, a banner says so and why (background tab, chat iframe, or CPU).
+
+## Rematch and spectators
+
+* **Rematch.** Once both players are in, the host has a Rematch button that restarts the game in place, and the opponent has Ask for rematch, which shows the host a prompt. Room, connection and stream stay up; the CPS-3 board takes several seconds to reboot to the title. Insert coin and press Start as usual.
+* **Spectators.** Each match has `MAX_SPECTATORS` watch seats (default 2). Watch from a **Watch** button in the open-matches list, from **Live matches** in the Matrix widget (accepted challenges between other members), from the host's **Watch link** button, or from the Fluxer bot's watch link. Spectators get the host's stream and their inputs are ignored. Each one costs the host another video encode and upload.
+* **Who is Player 2.** The host decides: the first joiner who asked to play gets Player 2 and everyone else watches, even if a spectator connected first. Someone who joins a match that already has an opponent is told they are watching.
+* **Save states.** EmulatorJS's own save and load paths work again; the published fbneo core lacks the export current EmulatorJS calls, so the bridge rebuilds it from the core's older one.
 
 ## ROMs
 
@@ -84,6 +91,7 @@ EmulatorJS is pinned. `scripts/fetch-emulatorjs.sh` installs EmulatorJS at a fix
 | `STREAM_BITRATE_RELAY` | 1500000 | Max video bits/s through TURN |
 | `INPUT_DELAY_DEFAULT` | 3 | Host input delay in frames until a player picks one |
 | `THREADS` | 1 | `0` stops pop-out tabs loading the threaded core |
+| `MAX_SPECTATORS` | 2 | Watch seats per match, 0-6 |
 | `EJS_DATA_PATH` | `ejs/` if installed, else CDN `latest` | Where EmulatorJS loads from |
 
 Without Docker: run `scripts/netplay-server.sh` and `node server/serve.js` behind any TLS reverse proxy, setting `NETPLAY_URL` and `PUBLIC_URL` for the web process.
@@ -132,8 +140,7 @@ Measured on this machine in the desktop app's browser pane: the host runs CPS-3 
 
 * Host-streaming netplay: the guest sees an encoded video stream (about 30 fps by default in EmulatorJS) and plays with added latency. The host plays locally with none.
 * CPS-3 in WebAssembly is heavy. A recent desktop CPU holds 60 fps; laptops and phones may not.
-* Only two players per match. Spectating is not wired up (the netplay server allows up to four slots if you want to add it).
-* Leaving a match reloads the page: EmulatorJS cannot be torn down and restarted in place.
+* Leaving a match reloads the page: EmulatorJS cannot be torn down and restarted in place. Rematch does not need to.
 * Fluxer's mention syntax in message content is assumed to be Discord-style `<@id>`; that part of the docs was not explicit.
 * `/config.json` hands the ICE server list, including any static TURN username and credential, to every visitor. That is inherent to browser WebRTC; use time-limited TURN credentials if the TURN server matters.
 * `scripts/merge-romset.py` only knows the `sfiii3nr1` + `sfiii3` pairing; other clones (`sfiii3n`, `sfiii3r1`) would need their own simm1 set.

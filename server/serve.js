@@ -12,6 +12,7 @@
    STREAM_BITRATE_RELAY    max video bitrate through TURN, bps (default 1500000)
    INPUT_DELAY_DEFAULT     host input delay in frames, 0-8, until a player picks one (default 3)
    THREADS=0               never use the threaded core, even in an isolated pop-out tab
+   MAX_SPECTATORS          watchers per match, 0-6 (default 2; each costs the host one video encode)
    GAME_ID           integer namespace on the netplay server (default 33)
    PUBLIC_URL        public URL of this page (for share links)
    HOST              bind address (default 0.0.0.0; use 127.0.0.1 to keep a dev server off the LAN)
@@ -79,6 +80,7 @@ function config() {
   if (num("STREAM_BITRATE_RELAY") !== undefined) out.streamBitrateRelay = num("STREAM_BITRATE_RELAY");
   if (num("INPUT_DELAY_DEFAULT") !== undefined) out.inputDelayDefault = num("INPUT_DELAY_DEFAULT");
   if (process.env.THREADS === "0") out.threads = false;
+  if (num("MAX_SPECTATORS") !== undefined) out.maxSpectators = num("MAX_SPECTATORS");
   if (process.env.GAME_ID) out.gameId = Number(process.env.GAME_ID);
   if (process.env.PUBLIC_URL) out.publicUrl = process.env.PUBLIC_URL;
   if (process.env.ICE_SERVERS) {

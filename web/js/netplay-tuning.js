@@ -22,6 +22,29 @@ window.TSL = window.TSL || {};
 TSL.Tuning = (() => {
   const pcs = new Set();
   let installed = false;
+  let failures = 0;
+
+  /** Wrap a data channel so a host-side filter (TSL.Tuning.inputFilter) sees every
+      message before EmulatorJS's own onmessage handler does. */
+  function interceptChannel(dc, pc) {
+    let handler = null;
+    Object.defineProperty(dc, "onmessage", {
+      configurable: true,
+      get() { return handler; },
+      set(fn) { handler = fn; }
+    });
+    dc.addEventListener("message", (ev) => {
+      if (!handler) return;
+      const f = TSL.Tuning.inputFilter;
+      if (!f) return handler(ev);
+      let d;
+      try { d = JSON.parse(ev.data); } catch (_) { return handler(ev); }
+      const out = f(pc, d);
+      if (out === null) return;                     // dropped (spectator input)
+      if (out === d) return handler(ev);
+      handler({ data: JSON.stringify(out) });       // rewritten (player index)
+    });
+  }
 
   // EmulatorJS uses exactly these two values: 2.5 Mbps direct, 0.9 Mbps relay
   // (plus 1.8 Mbps before ICE settles). Anything else is left untouched.
@@ -77,11 +100,14 @@ TSL.Tuning = (() => {
       const Wrapped = function (...args) {
         const pc = new Orig(...args);
         pcs.add(pc);
+        const origCDC = pc.createDataChannel.bind(pc);
+        pc.createDataChannel = (...a) => { const dc = origCDC(...a); interceptChannel(dc, pc); return dc; };
         pc.addEventListener("track", (e) => {
           try { e.receiver.jitterBufferTarget = 0; } catch (_) {}   // standard (Chrome 124+, Firefox 120+)
           try { e.receiver.playoutDelayHint = 0; } catch (_) {}     // legacy Chromium name
         });
         pc.addEventListener("connectionstatechange", () => {
+          if (pc.connectionState === "failed") failures++;
           if (pc.connectionState === "closed" || pc.connectionState === "failed") pcs.delete(pc);
         });
         return pc;
@@ -146,7 +172,15 @@ TSL.Tuning = (() => {
     return Math.round(times[1]);
   }
 
-  return { install, sample, grade, serverPing, pcs, config: cfg };
+  return {
+    install, sample, grade, serverPing, pcs, config: cfg,
+    /** Peer connections that ended in "failed" (ICE could not find a route). */
+    failures: () => failures,
+    /** Live peer connections in "connected" state. */
+    connectedCount: () => [...pcs].filter((pc) => pc.connectionState === "connected").length,
+    /** Host sets this: (pc, message) => message | rewritten | null. */
+    inputFilter: null
+  };
 })();
 
 TSL.Tuning.install();
