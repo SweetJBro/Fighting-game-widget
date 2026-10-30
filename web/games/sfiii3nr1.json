@@ -1,0 +1,303 @@
+{
+  "id": "sfiii3nr1",
+  "name": "Street Fighter III: 3rd Strike",
+  "short": "3rd Strike",
+  "aliases": [
+    "3s",
+    "sf3",
+    "third",
+    "thirdstrike"
+  ],
+  "hardware": "CPS-3",
+  "core": "arcade",
+  "netplayId": 33,
+  "rom": {
+    "file": "sfiii3nr1.zip",
+    "description": "Street Fighter III 3rd Strike: Fight for the Future (Japan 990512, NO CD)",
+    "parent": "sfiii3",
+    "merged": true,
+    "members": [
+      {
+        "name": "sfiii3_japan_nocd.29f400.u2",
+        "size": 524288,
+        "crc32": "1edc6366"
+      },
+      {
+        "name": "sfiii3-simm1.0",
+        "size": 2097152,
+        "crc32": "66e66235"
+      },
+      {
+        "name": "sfiii3-simm1.1",
+        "size": 2097152,
+        "crc32": "186e8c5f"
+      },
+      {
+        "name": "sfiii3-simm1.2",
+        "size": 2097152,
+        "crc32": "bce18cab"
+      },
+      {
+        "name": "sfiii3-simm1.3",
+        "size": 2097152,
+        "crc32": "129dc2c9"
+      },
+      {
+        "name": "sfiii3-simm2.0",
+        "size": 2097152,
+        "crc32": "06eb969e"
+      },
+      {
+        "name": "sfiii3-simm2.1",
+        "size": 2097152,
+        "crc32": "e7039f82"
+      },
+      {
+        "name": "sfiii3-simm2.2",
+        "size": 2097152,
+        "crc32": "645c96f7"
+      },
+      {
+        "name": "sfiii3-simm2.3",
+        "size": 2097152,
+        "crc32": "610efab1"
+      },
+      {
+        "name": "sfiii3-simm3.0",
+        "size": 2097152,
+        "crc32": "7baa1f79"
+      },
+      {
+        "name": "sfiii3-simm3.1",
+        "size": 2097152,
+        "crc32": "234bf8fe"
+      },
+      {
+        "name": "sfiii3-simm3.2",
+        "size": 2097152,
+        "crc32": "d9ebc308"
+      },
+      {
+        "name": "sfiii3-simm3.3",
+        "size": 2097152,
+        "crc32": "293cba77"
+      },
+      {
+        "name": "sfiii3-simm3.4",
+        "size": 2097152,
+        "crc32": "6055e747"
+      },
+      {
+        "name": "sfiii3-simm3.5",
+        "size": 2097152,
+        "crc32": "499aa6fc"
+      },
+      {
+        "name": "sfiii3-simm3.6",
+        "size": 2097152,
+        "crc32": "6c13879e"
+      },
+      {
+        "name": "sfiii3-simm3.7",
+        "size": 2097152,
+        "crc32": "cf4f8ede"
+      },
+      {
+        "name": "sfiii3-simm4.0",
+        "size": 2097152,
+        "crc32": "091fd5ba"
+      },
+      {
+        "name": "sfiii3-simm4.1",
+        "size": 2097152,
+        "crc32": "0bca8917"
+      },
+      {
+        "name": "sfiii3-simm4.2",
+        "size": 2097152,
+        "crc32": "a0fd578b"
+      },
+      {
+        "name": "sfiii3-simm4.3",
+        "size": 2097152,
+        "crc32": "4bf8c699"
+      },
+      {
+        "name": "sfiii3-simm4.4",
+        "size": 2097152,
+        "crc32": "137b8785"
+      },
+      {
+        "name": "sfiii3-simm4.5",
+        "size": 2097152,
+        "crc32": "4fb70671"
+      },
+      {
+        "name": "sfiii3-simm4.6",
+        "size": 2097152,
+        "crc32": "832374a4"
+      },
+      {
+        "name": "sfiii3-simm4.7",
+        "size": 2097152,
+        "crc32": "1c88576d"
+      },
+      {
+        "name": "sfiii3-simm5.0",
+        "size": 2097152,
+        "crc32": "c67d9190"
+      },
+      {
+        "name": "sfiii3-simm5.1",
+        "size": 2097152,
+        "crc32": "6cb79868"
+      },
+      {
+        "name": "sfiii3-simm5.2",
+        "size": 2097152,
+        "crc32": "df69930e"
+      },
+      {
+        "name": "sfiii3-simm5.3",
+        "size": 2097152,
+        "crc32": "333754e0"
+      },
+      {
+        "name": "sfiii3-simm5.4",
+        "size": 2097152,
+        "crc32": "78f6d417"
+      },
+      {
+        "name": "sfiii3-simm5.5",
+        "size": 2097152,
+        "crc32": "8ccad9b1"
+      },
+      {
+        "name": "sfiii3-simm5.6",
+        "size": 2097152,
+        "crc32": "85de59e5"
+      },
+      {
+        "name": "sfiii3-simm5.7",
+        "size": 2097152,
+        "crc32": "ee7e29b3"
+      },
+      {
+        "name": "sfiii3-simm6.0",
+        "size": 2097152,
+        "crc32": "8da69042"
+      },
+      {
+        "name": "sfiii3-simm6.1",
+        "size": 2097152,
+        "crc32": "1c8c7ac4"
+      },
+      {
+        "name": "sfiii3-simm6.2",
+        "size": 2097152,
+        "crc32": "a671341d"
+      },
+      {
+        "name": "sfiii3-simm6.3",
+        "size": 2097152,
+        "crc32": "1a990249"
+      },
+      {
+        "name": "sfiii3-simm6.4",
+        "size": 2097152,
+        "crc32": "20cb39ac"
+      },
+      {
+        "name": "sfiii3-simm6.5",
+        "size": 2097152,
+        "crc32": "5f844b2f"
+      },
+      {
+        "name": "sfiii3-simm6.6",
+        "size": 2097152,
+        "crc32": "450e8d28"
+      },
+      {
+        "name": "sfiii3-simm6.7",
+        "size": 2097152,
+        "crc32": "cc5f4187"
+      }
+    ],
+    "versionLabel": "Japan 990512 NO CD, the set Fightcade runs"
+  },
+  "coreOpts": {
+    "fbneo-dipswitch-sfiii3nr1-Region": "Japan",
+    "fbneo-cpu-speed-adjust": "100%",
+    "fbneo-frameskip-type": "disabled"
+  },
+  "input": {
+    "1": {
+      "key": "u",
+      "pad": "BUTTON_4",
+      "label": "LP"
+    },
+    "9": {
+      "key": "i",
+      "pad": "BUTTON_3",
+      "label": "MP"
+    },
+    "10": {
+      "key": "o",
+      "pad": "LEFT_TOP_SHOULDER",
+      "label": "HP"
+    },
+    "0": {
+      "key": "j",
+      "pad": "BUTTON_2",
+      "label": "LK"
+    },
+    "8": {
+      "key": "k",
+      "pad": "BUTTON_1",
+      "label": "MK"
+    },
+    "11": {
+      "key": "l",
+      "pad": "RIGHT_TOP_SHOULDER",
+      "label": "HK"
+    },
+    "2": {
+      "key": "space",
+      "pad": "SELECT",
+      "label": "Coin"
+    },
+    "3": {
+      "key": "enter",
+      "pad": "START",
+      "label": "Start"
+    },
+    "4": {
+      "key": "up arrow",
+      "pad": "DPAD_UP",
+      "label": "Up"
+    },
+    "5": {
+      "key": "down arrow",
+      "pad": "DPAD_DOWN",
+      "label": "Down"
+    },
+    "6": {
+      "key": "left arrow",
+      "pad": "DPAD_LEFT",
+      "label": "Left"
+    },
+    "7": {
+      "key": "right arrow",
+      "pad": "DPAD_RIGHT",
+      "label": "Right"
+    }
+  },
+  "netplay": {
+    "defaultInputDelay": 3,
+    "players": 2
+  },
+  "performance": {
+    "fps": 59.6,
+    "warnBelowFps": 50
+  }
+}

@@ -8,7 +8,7 @@ Measurements were taken in Chromium on the maintainer's Linux desktop with every
 
 ## Done
 
-### Phase 1: netplay quality (`phase1-netplay-quality`)
+### Phase 1: netplay quality (merged into `main`)
 
 | Task | Result |
 |---|---|
@@ -38,15 +38,28 @@ Findings along the way:
 * **Hidden tabs stop entirely.** A background or hidden tab runs no animation frames, so the host's game freezes. The performance banner and pop-out exist for this.
 * **A rematch reboots the CPS-3 board**, which takes several seconds of black screen and the region warning before the title.
 
+### Phase 2: multiple games (`phase2-multigame`)
+
+| Task | Result |
+|---|---|
+| Game definitions | `web/games/<id>.json` per game (format in [`game-adapter.d.ts`](game-adapter.d.ts)), listed in `web/games/index.json`. Lobby, ROM store, server, netplay bridge and Fluxer bot read them; no 3rd Strike logic is left in code |
+| Manifests from FBNeo's DAT | `scripts/romset.py manifest` reads the libretro/FBNeo arcade DAT; clone files fold into the game zip, BIOS files into the BIOS zip |
+| Generic merge / verify / BIOS tool | `scripts/romset.py`; `merge-romset.py` kept as a 3rd Strike wrapper |
+| ROM store per game + shared BIOS | IndexedDB keys `rom:<id>`, `bios:<id>`; every zip checked in the browser by reading its central directory against the manifest; old single 3rd Strike entry migrates |
+| Packaged files per game | Any game or BIOS zip in `roms/` is served and advertised |
+| Game picker, per-game rooms, links | Top-bar picker; each game has its own netplay namespace (`netplayId`); `?game=` on every link |
+| Matrix `game` field | Challenges and accepts carry it (missing = 3rd Strike); widget tags each challenge and live match; accepting a game you lack opens the ROM screen first and only then sends the accept |
+| Fluxer `!fight <game> @rival` | Game ids and aliases; game list read from the lobby |
+| Two more games | Super Street Fighter II Turbo (`ssf2xjr1`, CPS-2) and The King of Fighters 2002 (`kof2002`, Neo Geo + `neogeo.zip`). Both boot at 60 fps; KOF host and guest connected in their own namespace |
+
 ## Next
 
 | Task | Size | Notes |
 |---|---|---|
-| Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3, the 60 fps stream on a home uplink, and that Element lets the widget open a pop-out tab |
+| Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3 and the 60 fps stream on a home uplink. Element's widget iframe sandbox includes `allow-popups allow-popups-to-escape-sandbox`, so pop-out should work there |
+| Check KOF 2002 buttons in game | S | The A/B/C/D layout follows FBNeo's default Neo Geo mapping from its source; confirm each button in the game's own test menu |
+| More games | S each | One JSON file per FBNeo arcade game: `romset.py manifest`, buttons, a new `netplayId` |
 | Instant rematch | S | Capture a save state at the title screen on first boot and load it instead of restarting; skips the ~10 s board boot. The save-state shim makes this possible |
-| Multi-game (GameAdapter) | M | Move 3rd Strike data into `web/games/sfiii3nr1.json` per [`game-adapter.d.ts`](game-adapter.d.ts); ROM store keyed by game; `game` field on Matrix events (missing means `sfiii3nr1`); game picker in lobby and `!fight <game> @rival` |
-| Generic merge helper | S | `scripts/merge-romset.py` reads the manifest from the adapter JSON instead of a hard-coded table |
-| Second game | M | A CPS-2 title (`ssf2t`) or Garou (`garou`, needs `neogeo.zip` BIOS handling) to prove the adapter |
 | Gamepad remapping UI | M | On top of EmulatorJS's control settings, saved per game per browser |
 | Spectator cost control | S | Each spectator is one more video encode on the host. Show the host how many are watching (done) and let them close spectator seats |
 | Assign P2 by Matrix identity | S | In the widget, the challenge already names the opponent; pass it into the roster so only that member can take P2 |

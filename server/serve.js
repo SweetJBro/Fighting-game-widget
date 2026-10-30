@@ -13,12 +13,12 @@
    INPUT_DELAY_DEFAULT     host input delay in frames, 0-8, until a player picks one (default 3)
    THREADS=0               never use the threaded core, even in an isolated pop-out tab
    MAX_SPECTATORS          watchers per match, 0-6 (default 2; each costs the host one video encode)
-   GAME_ID           integer namespace on the netplay server (default 33)
    PUBLIC_URL        public URL of this page (for share links)
    HOST              bind address (default 0.0.0.0; use 127.0.0.1 to keep a dev server off the LAN)
-   ROMS_DIR          folder holding a merged sfiii3*.zip for personal use (default ../roms)
-   PACKAGED_ROM=1    serve and advertise that ROM (opt-in: off unless set, so a checkout with
-                     a ROM in roms/ never publishes it by accident) */
+   ROMS_DIR          folder holding romsets for personal use (default ../roms). Any file named
+                     like a game's set (web/games/*.json rom.file) or its BIOS (bios.file) counts.
+   PACKAGED_ROM=1    serve and advertise those files (opt-in: off unless set, so a checkout with
+                     ROMs in roms/ never publishes them by accident) */
 "use strict";
 const http = require("http");
 const fs = require("fs");
@@ -37,21 +37,41 @@ const TYPES = {
   ".wasm": "application/wasm", ".data": "application/octet-stream", ".ico": "image/x-icon", ".woff2": "font/woff2"
 };
 
-function packagedRom() {
-  if (process.env.PACKAGED_ROM !== "1") return null;
+/** web/games/*.json, read fresh so adding a game needs no restart. */
+function games() {
+  const dir = path.join(ROOT, "games");
   try {
-    const names = fs.readdirSync(ROMS_DIR).filter((n) => /^sfiii3(nr1|n|r1)?\.zip$/i.test(n));
-    const order = ["sfiii3nr1.zip", "sfiii3n.zip", "sfiii3r1.zip", "sfiii3.zip"];
-    names.sort((a, b) => order.indexOf(a.toLowerCase()) - order.indexOf(b.toLowerCase()));
-    if (!names.length) return null;
-    const file = path.join(ROMS_DIR, names[0]);
-    const st = fs.statSync(file);
-    const etag = `"${st.size}-${Math.floor(st.mtimeMs)}"`;
-    // A version segment in the PATH (not a query string: EmulatorJS keeps the
-    // query in the file name it hands FBNeo) makes browsers and EmulatorJS's own
-    // cache refetch a replaced file. Any /roms/<anything>/<name> serves it.
-    return { name: names[0].toLowerCase(), file, url: `roms/v${Math.floor(st.mtimeMs)}/${names[0]}`, size: st.size, mtime: st.mtime, etag };
-  } catch (_) { return null; }
+    const idx = JSON.parse(fs.readFileSync(path.join(dir, "index.json"), "utf8"));
+    return idx.games.map((id) => JSON.parse(fs.readFileSync(path.join(dir, id + ".json"), "utf8")));
+  } catch (e) { console.error("game registry:", e.message); return []; }
+}
+
+/** Packaged files, keyed by lower-case file name: game sets and BIOS zips found in ROMS_DIR. */
+function packagedFiles() {
+  if (process.env.PACKAGED_ROM !== "1") return {};
+  let onDisk;
+  try { onDisk = fs.readdirSync(ROMS_DIR); } catch (_) { return {}; }
+  const wanted = new Map();
+  for (const g of games()) {
+    wanted.set(g.rom.file.toLowerCase(), { kind: "rom", id: g.id });
+    if (g.bios) wanted.set(g.bios.file.toLowerCase(), { kind: "bios", id: g.bios.id });
+  }
+  const out = {};
+  for (const n of onDisk) {
+    const w = wanted.get(n.toLowerCase());
+    if (!w) continue;
+    try {
+      const file = path.join(ROMS_DIR, n);
+      const st = fs.statSync(file);
+      if (!st.isFile()) continue;
+      // A version segment in the PATH (not a query string: EmulatorJS keeps the
+      // query in the file name it hands FBNeo) makes browsers and EmulatorJS's own
+      // cache refetch a replaced file. Any /roms/<anything>/<name> serves it.
+      out[n.toLowerCase()] = { ...w, name: n.toLowerCase(), file, size: st.size, mtime: st.mtime,
+        etag: `"${st.size}-${Math.floor(st.mtimeMs)}"`, url: `roms/v${Math.floor(st.mtimeMs)}/${n}` };
+    } catch (_) {}
+  }
+  return out;
 }
 
 /** Stream a file to the response; errors become a 500 (or a dropped socket once
@@ -69,8 +89,12 @@ function sendFile(res, file, headers) {
 
 function config() {
   const out = {};
-  const rom = packagedRom();
-  if (rom) out.packagedRom = { name: rom.name, url: rom.url, size: rom.size };
+  // { roms: { gameId: {name,url,size} }, bios: { biosId: {name,url,size} } }
+  const files = Object.values(packagedFiles());
+  if (files.length) {
+    out.packaged = { roms: {}, bios: {} };
+    for (const f of files) out.packaged[f.kind === "rom" ? "roms" : "bios"][f.id] = { name: f.name, url: f.url, size: f.size };
+  }
   if (process.env.NETPLAY_URL) out.netplayUrl = process.env.NETPLAY_URL;
   if (process.env.EJS_DATA_PATH) out.ejsDataPath = process.env.EJS_DATA_PATH;
   else if (fs.existsSync(path.join(ROOT, "ejs", "loader.js"))) out.ejsDataPath = "ejs/";
@@ -81,7 +105,6 @@ function config() {
   if (num("INPUT_DELAY_DEFAULT") !== undefined) out.inputDelayDefault = num("INPUT_DELAY_DEFAULT");
   if (process.env.THREADS === "0") out.threads = false;
   if (num("MAX_SPECTATORS") !== undefined) out.maxSpectators = num("MAX_SPECTATORS");
-  if (process.env.GAME_ID) out.gameId = Number(process.env.GAME_ID);
   if (process.env.PUBLIC_URL) out.publicUrl = process.env.PUBLIC_URL;
   if (process.env.ICE_SERVERS) {
     try { out.iceServers = JSON.parse(process.env.ICE_SERVERS); } catch (e) { console.error("ICE_SERVERS is not valid JSON:", e.message); }
@@ -106,9 +129,9 @@ function handle(req, res) {
   }
   if (p === "/healthz") { res.writeHead(200); return res.end("ok"); }
   if (p.startsWith("/roms/")) {
-    // Only the one advertised file is ever served, always by its on-disk path.
-    const rom = packagedRom();
-    if (!rom || path.basename(p).toLowerCase() !== rom.name) { res.writeHead(404); return res.end("not found"); }
+    // Only advertised files are ever served, always by their on-disk path.
+    const rom = packagedFiles()[path.basename(p).toLowerCase()];
+    if (!rom) { res.writeHead(404); return res.end("not found"); }
     const headers = {
       "content-type": "application/zip", "content-length": rom.size, "etag": rom.etag,
       "last-modified": rom.mtime.toUTCString(), "cache-control": "private, max-age=86400"

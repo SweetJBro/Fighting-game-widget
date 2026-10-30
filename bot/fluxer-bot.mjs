@@ -4,7 +4,8 @@
    Commands (in any channel the bot can read):
      !fight @someone      challenge a specific person; bot posts a host link for you and a join link for them
      !fight               open challenge; bot posts a host link for you and a join link for anyone
-     !fight help
+     !fight kof @someone  pick the game by id or alias (st, 3s, kof, ...); default is the lobby's default game
+     !fight help          lists the games
 
    Env:
      FLUXER_BOT_TOKEN   bot token from your Fluxer application ("<application_id>.<secret>")
@@ -19,7 +20,32 @@ const TOKEN = process.env.FLUXER_BOT_TOKEN;
 const LOBBY_URL = process.env.LOBBY_URL;
 const PREFIX = (process.env.PREFIX || "!fight").toLowerCase();
 const INSTANCE = (process.env.FLUXER_INSTANCE || "https://fluxer.app").replace(/\/$/, "");
-if (!TOKEN || !LOBBY_URL) { console.error("Set FLUXER_BOT_TOKEN and LOBBY_URL"); process.exit(1); }
+if (!process.env.BOT_SELFTEST && (!TOKEN || !LOBBY_URL)) { console.error("Set FLUXER_BOT_TOKEN and LOBBY_URL"); process.exit(1); }
+
+/* ---- games: read from the lobby itself (web/games), so the bot never drifts ---- */
+let GAMES = [{ id: "sfiii3nr1", name: "Street Fighter III: 3rd Strike", short: "3rd Strike", aliases: ["3s", "sf3"] }];
+let DEFAULT_GAME = "sfiii3nr1";
+async function loadGames() {
+  try {
+    const base = new URL("games/", LOBBY_URL);
+    const idx = await (await fetch(new URL("index.json", base))).json();
+    GAMES = await Promise.all(idx.games.map(async (id) => (await fetch(new URL(id + ".json", base))).json()));
+    DEFAULT_GAME = idx.default || GAMES[0].id;
+    console.log("games:", GAMES.map((g) => g.id).join(", "));
+  } catch (e) { console.error("could not load games from the lobby, using 3rd Strike only:", e.message); }
+}
+function findGame(word) {
+  const w = String(word || "").toLowerCase();
+  return GAMES.find((g) => g.id === w || (g.aliases || []).includes(w)) || null;
+}
+/** "kof <@123> extra" -> { game, help } ; mentions are handled separately. */
+export function parseArgs(arg) {
+  const words = arg.split(/\s+/).filter((w) => w && !/^<@!?\d+>$/.test(w));
+  if (words[0] === "help") return { help: true };
+  const game = words.length ? findGame(words[0]) : null;
+  if (words.length && !game) return { unknown: words[0] };
+  return { game: game || GAMES.find((g) => g.id === DEFAULT_GAME) || GAMES[0] };
+}
 
 const CHARS = ["RYU", "KEN", "CHUN", "YUN", "YANG", "MAKOTO", "DUDLEY", "URIEN", "AKUMA", "ORO", "IBUKI", "ELENA", "ALEX", "REMY", "NECRO", "HUGO", "SEAN", "TWELVE", "GILL"];
 function makeCode() {
@@ -27,8 +53,9 @@ function makeCode() {
   let s = ""; for (let i = 0; i < 4; i++) s += abc[Math.floor(Math.random() * abc.length)];
   return CHARS[Math.floor(Math.random() * CHARS.length)] + "-" + s;
 }
-function link(code, role) {
-  const u = new URL(LOBBY_URL); u.searchParams.set("match", code); u.searchParams.set("role", role); return u.toString();
+function link(code, role, game) {
+  const u = new URL(LOBBY_URL); u.searchParams.set("match", code); u.searchParams.set("role", role);
+  u.searchParams.set("game", game.id); return u.toString();
 }
 
 let API = process.env.FLUXER_API_BASE, GATEWAY = process.env.FLUXER_GATEWAY;
@@ -63,25 +90,30 @@ async function onMessage(m) {
   const author = m.author || {};
   const authorName = author.global_name || author.username || "someone";
 
-  if (arg === "help") {
-    return post(m.channel_id, `**3rd Strike Lobby**\n\`${PREFIX} @player\` challenge someone · \`${PREFIX}\` open challenge.\nEach player needs their own 3rd Strike romset loaded once in the lobby page.`);
+  const parsed = parseArgs(arg);
+  const games = GAMES.map((g) => `\`${(g.aliases && g.aliases[0]) || g.id}\` ${g.name}`).join(" · ");
+  if (parsed.help || parsed.unknown) {
+    return post(m.channel_id, (parsed.unknown ? `Unknown game \`${parsed.unknown}\`.\n` : "") +
+      `**Fighting Game Widget**\n\`${PREFIX} @player\` challenge someone · \`${PREFIX}\` open challenge · \`${PREFIX} <game> @player\` another game.\n` +
+      `Games: ${games}\nEach player needs the game's romset loaded once in the lobby page.`);
   }
+  const game = parsed.game;
   const code = makeCode();
   const target = (m.mentions || []).find((u) => u.id !== author.id && !(me && u.id === me.id));
   if (target) {
     const tName = target.global_name || target.username || "opponent";
     await post(m.channel_id,
-      `🥊 **${authorName}** challenges **${tName}** — match **${code}**\n` +
-      `<@${author.id}> host (P1): ${link(code, "host")}\n` +
-      `<@${target.id}> join (P2): ${link(code, "guest")}\n` +
-      `Watch: ${link(code, "spectator")}`,
+      `🥊 **${authorName}** challenges **${tName}** to ${game.name} — match **${code}**\n` +
+      `<@${author.id}> host (P1): ${link(code, "host", game)}\n` +
+      `<@${target.id}> join (P2): ${link(code, "guest", game)}\n` +
+      `Watch: ${link(code, "spectator", game)}`,
       [author.id, target.id]);
   } else {
     await post(m.channel_id,
-      `🥊 **${authorName}** is looking for a fight — match **${code}**\n` +
-      `<@${author.id}> host (P1): ${link(code, "host")}\n` +
-      `Anyone, join (P2): ${link(code, "guest")}\n` +
-      `Watch: ${link(code, "spectator")}`,
+      `🥊 **${authorName}** is looking for a ${game.name} fight — match **${code}**\n` +
+      `<@${author.id}> host (P1): ${link(code, "host", game)}\n` +
+      `Anyone, join (P2): ${link(code, "guest", game)}\n` +
+      `Watch: ${link(code, "spectator", game)}`,
       [author.id]);
   }
 }
@@ -123,4 +155,7 @@ function connect() {
 }
 function send(o) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o)); }
 
-discover().then(connect).catch((e) => { console.error(e); process.exit(1); });
+if (!process.env.BOT_SELFTEST) {
+  loadGames().then(discover).then(connect).catch((e) => { console.error(e); process.exit(1); });
+}
+export { loadGames, findGame };

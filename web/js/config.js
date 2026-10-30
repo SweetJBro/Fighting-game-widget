@@ -14,8 +14,8 @@ TSL.loadConfig = async function loadConfig() {
     // to the current WebRTC netplay server. Self-host by copying the
     // EmulatorJS "data" folder into web/ejs/ and setting EJS_DATA_PATH=ejs/.
     ejsDataPath: "https://cdn.emulatorjs.org/latest/data/",
-    // Any integer; it namespaces rooms on the netplay server.
-    gameId: 33,
+    // Rooms are namespaced per game on the netplay server: each web/games/<id>.json
+    // has its own netplayId (3rd Strike keeps 33, the old global default).
     // Where this page is reachable from the outside; used for share links.
     publicUrl: location.origin + location.pathname,
   };

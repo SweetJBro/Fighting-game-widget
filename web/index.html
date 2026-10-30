@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>3rd Strike Lobby</title>
-  <link rel="stylesheet" href="css/app.css?v=19">
+  <title>Fighting Game Widget</title>
+  <link rel="stylesheet" href="css/app.css?v=21">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">3S</span>
-      <span class="brand-text">3rd Strike Lobby</span>
+      <span class="brand-mark">FG</span>
+      <span class="brand-text">Fighting Game Widget</span>
+      <select id="game-select" class="game-select" title="Game"></select>
     </div>
     <div class="topbar-right">
       <span id="mode-badge" class="badge">standalone</span>
@@ -28,26 +29,21 @@
         <h1 id="rom-heading">Bring your own ROM</h1>
         <p id="rom-intro">
           This lobby does not ship or download any game data. Pick your own
-          <strong>Street Fighter III: 3rd Strike</strong> FBNeo romset. The file stays in
-          this browser (IndexedDB) and is never uploaded anywhere.
+          <strong class="rom-game-name"></strong> FBNeo romset. Files stay in
+          this browser (IndexedDB) and are never uploaded anywhere.
         </p>
         <p id="rom-intro-packaged" class="hidden">
-          This server packages its owner's <strong>Street Fighter III: 3rd Strike</strong> romset for
-          personal use, so you can play right away. It is the Japan 990512 NO-CD set that Fightcade
-          runs, with the same Region (Japan) and CPU (100%) settings. Storing your own set below is optional; a stored
+          This server packages its owner's <strong class="rom-game-name"></strong> romset for
+          personal use, so you can play right away. Storing your own set below is optional; a stored
           set takes precedence and stays in this browser (IndexedDB).
         </p>
-        <p class="hint">
-          Accepted set names: <code>sfiii3nr1.zip</code> (Japan 990512, no CD, the Fightcade standard),
-          <code>sfiii3n.zip</code>, <code>sfiii3r1.zip</code>, <code>sfiii3.zip</code>.
-          The zip must keep its original set name so FBNeo recognises it, and it must be a
-          <strong>full set</strong> (roughly 65–80 MB depending on compression) that already contains the shared <code>sfiii3-simm2.x</code> to
-          <code>simm6.x</code> files. Fightcade's split pair can be merged with <code>scripts/merge-romset.py</code>.
-        </p>
+        <p class="hint" id="rom-accepted"></p>
+        <p class="hint" id="rom-merge-hint"></p>
         <label id="rom-drop" class="dropzone" for="rom-file">
-          <input id="rom-file" type="file" accept=".zip,application/zip">
-          <span class="dropzone-title">Drop the zip here or click to choose</span>
+          <input id="rom-file" type="file" accept=".zip,application/zip" multiple>
+          <span class="dropzone-title">Drop the zip(s) here or click to choose</span>
           <span id="rom-drop-status" class="dropzone-status"></span>
+          <span id="bios-status" class="dropzone-status hidden"></span>
         </label>
         <div class="row">
           <button id="btn-rom-clear" class="btn btn-ghost btn-sm">Forget stored ROM</button>
@@ -153,8 +149,8 @@
       </div>
       <div id="controls-help" class="controls hidden">
         <table>
-          <tr><th>Move</th><td>Arrow keys</td><th>Start</th><td>Enter</td><th>Coin</th><td>Space</td></tr>
-          <tr><th>LP / MP / HP</th><td>U / I / O</td><th>LK / MK / HK</th><td>J / K / L</td><th>Gamepad</th><td>Plug in and press a button</td></tr>
+          <tr><th>Move</th><td>Arrow keys</td><th>Gamepad</th><td>Plug in and press a button</td></tr>
+          <tbody id="controls-buttons"></tbody>
         </table>
         <p class="hint">Host is Player 1, guest is Player 2. The guest's keys are sent to the host's game automatically.</p>
       </div>
@@ -166,11 +162,12 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/config.js?v=19"></script>
-  <script src="js/romstore.js?v=19"></script>
-  <script src="js/netplay-tuning.js?v=19"></script>
-  <script src="js/netplay-bridge.js?v=19"></script>
-  <script src="js/matrix-lobby.js?v=19"></script>
-  <script src="js/app.js?v=19"></script>
+  <script src="js/games.js?v=21"></script>
+  <script src="js/config.js?v=21"></script>
+  <script src="js/romstore.js?v=21"></script>
+  <script src="js/netplay-tuning.js?v=21"></script>
+  <script src="js/netplay-bridge.js?v=21"></script>
+  <script src="js/matrix-lobby.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
 </body>
 </html>

@@ -1,10 +1,12 @@
-/* Stores the player's own romset in IndexedDB. Nothing leaves the browser. */
+/* Stores the player's own romsets in IndexedDB, one per game plus shared BIOS
+   zips (e.g. neogeo.zip). Nothing leaves the browser. Every file is checked
+   against the game's FBNeo manifest before it is stored. */
 window.TSL = window.TSL || {};
 
 TSL.RomStore = (() => {
-  const DB = "tsl-rom", STORE = "rom", KEY = "current";
-  const SET_RE = /^(sfiii3|sfiii3r1|sfiii3n|sfiii3nr1)\.zip$/i;
-  const MIN_SIZE = 60 * 1024 * 1024;   // anything smaller is a split clone set
+  const DB = "tsl-rom", STORE = "rom";
+  const romKey = (gameId) => "rom:" + gameId;
+  const biosKey = (biosId) => "bios:" + biosId;
 
   function open() {
     return new Promise((resolve, reject) => {
@@ -22,41 +24,92 @@ TSL.RomStore = (() => {
       t.onerror = () => { db.close(); reject(t.error); };
     }));
   }
+  const getRec = (k) => tx("readonly", (s) => s.get(k));
+  const putRec = (k, v) => tx("readwrite", (s) => s.put(v, k));
+  const delRec = (k) => tx("readwrite", (s) => s.delete(k));
 
-  /** Normalise "sfiii3nr1 (1).zip" -> "sfiii3nr1.zip"; null when not a 3S set. */
+  /** Normalise "kof2002 (1).zip" -> "kof2002.zip". */
   function canonicalName(fileName) {
-    const base = String(fileName || "").trim().toLowerCase()
+    return String(fileName || "").trim().toLowerCase()
       .replace(/\s*\(\d+\)(?=\.zip$)/, "")
       .replace(/\s+/g, "");
-    return SET_RE.test(base) ? base : null;
   }
 
-  const VERSIONS = {
-    "sfiii3nr1.zip": "Japan 990512 NO CD, the set Fightcade runs",
-    "sfiii3n.zip": "Japan 990608 NO CD",
-    "sfiii3r1.zip": "Euro 990512",
-    "sfiii3.zip": "Euro 990608"
-  };
+  function toFile(rec) {
+    return rec && rec.blob ? { name: rec.name, size: rec.size, savedAt: rec.savedAt,
+      file: new File([rec.blob], rec.name, { type: "application/zip" }) } : null;
+  }
+
+  // Versions before multi-game kept one 3rd Strike set under "current".
+  let migrated = false;
+  async function migrate() {
+    if (migrated) return;
+    migrated = true;
+    try {
+      const old = await getRec("current");
+      if (old && old.blob) {
+        if (!(await getRec(romKey("sfiii3nr1"))) && /^sfiii3nr1\.zip$/i.test(old.name)) await putRec(romKey("sfiii3nr1"), old);
+        await delRec("current");
+      }
+    } catch (_) {}
+  }
+
+  function describeMissing(missing, spec, what) {
+    const list = missing.slice(0, 6).join(", ") + (missing.length > 6 ? " and " + (missing.length - 6) + " more" : "");
+    return what + " is missing " + missing.length + " of " + spec.members.length + " files (" + list + ").";
+  }
 
   return {
     canonicalName,
-    describe(name) { return VERSIONS[String(name || "").toLowerCase()] || ""; },
-    MIN_SIZE,
-    async get() {
-      const rec = await tx("readonly", (s) => s.get(KEY));
+
+    /** Stored set for a game, or null. Drops records that no longer pass the manifest. */
+    async get(game) {
+      await migrate();
+      const rec = await getRec(romKey(game.id));
       if (!rec || !rec.blob) return null;
-      // A split set stored before the size check existed cannot boot; drop it.
-      if (rec.size < MIN_SIZE) { await tx("readwrite", (s) => s.delete(KEY)); return null; }
-      return { name: rec.name, size: rec.size, savedAt: rec.savedAt,
-               file: new File([rec.blob], rec.name, { type: "application/zip" }) };
+      if (rec.manifestOk !== true) {
+        const r = await TSL.ZipCheck.check(rec.blob, game.rom).catch(() => ({ ok: false }));
+        if (!r.ok) { await delRec(romKey(game.id)); return null; }
+        rec.manifestOk = true; await putRec(romKey(game.id), rec);
+      }
+      return toFile(rec);
     },
-    async put(file) {
+
+    async getBios(game) {
+      if (!game.bios) return null;
+      return toFile(await getRec(biosKey(game.bios.id)));
+    },
+
+    /** Store a dropped zip for `game`; it may also be that game's BIOS. Returns what was stored. */
+    async put(game, file) {
       const name = canonicalName(file.name);
-      if (!name) throw new Error("Not a 3rd Strike set. Expected sfiii3nr1.zip, sfiii3n.zip, sfiii3r1.zip or sfiii3.zip.");
-      if (file.size < MIN_SIZE) throw new Error("That looks like a split clone set (" + (file.size / 1048576).toFixed(1) + " MB). The browser needs one merged zip of roughly 65-80 MB; see scripts/merge-romset.py.");
-      await tx("readwrite", (s) => s.put({ name, size: file.size, savedAt: Date.now(), blob: file }, KEY));
-      return name;
+      if (game.bios && name === game.bios.file) {
+        const r = await TSL.ZipCheck.check(file, game.bios);
+        if (!r.ok) throw new Error(describeMissing(r.missing, game.bios, "This " + game.bios.file));
+        await putRec(biosKey(game.bios.id), { name, size: file.size, savedAt: Date.now(), blob: file });
+        return { kind: "bios", name };
+      }
+      if (name !== game.rom.file) {
+        const other = TSL.Games.all().find((g) => g.rom.file === name);
+        throw new Error(other
+          ? name + " is " + other.name + ", not " + game.name + ". Switch game first."
+          : "Expected " + game.rom.file + (game.bios ? " (or " + game.bios.file + ")" : "") + " for " + game.name + ", got " + (file.name || "a file") + ". The zip must keep its set name.");
+      }
+      const r = await TSL.ZipCheck.check(file, game.rom);
+      if (!r.ok) {
+        if (r.present === 0) throw new Error("This " + name + " holds none of " + game.name + "'s files. It is a different game or revision renamed to " + name + ".");
+        let msg = describeMissing(r.missing, game.rom, "This " + name);
+        if (game.rom.parent) {
+          msg += " It looks like a split clone set: merge it with " + game.rom.parent + ".zip using scripts/romset.py merge " + game.id + ".";
+        }
+        throw new Error(msg);
+      }
+      await putRec(romKey(game.id), { name, size: file.size, savedAt: Date.now(), blob: file, manifestOk: true });
+      return { kind: "rom", name };
     },
-    async clear() { await tx("readwrite", (s) => s.delete(KEY)); }
+
+    async clear(game) {
+      await delRec(romKey(game.id));
+    }
   };
 })();

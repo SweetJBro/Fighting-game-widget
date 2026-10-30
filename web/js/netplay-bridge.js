@@ -38,7 +38,9 @@ TSL.Netplay = (() => {
   function readDelay() {
     let v = null;
     try { v = localStorage.getItem(DELAY_KEY); } catch (_) {}
-    const d = v === null ? Number((TSL.config && TSL.config.inputDelayDefault) ?? 3) : Number(v);
+    const fallback = (TSL.config && TSL.config.inputDelayDefault) ??
+      (opts && opts.game && opts.game.netplay && opts.game.netplay.defaultInputDelay) ?? 3;
+    const d = v === null ? Number(fallback) : Number(v);
     return Number.isFinite(d) ? Math.max(0, Math.min(8, Math.round(d))) : 3;
   }
 
@@ -78,28 +80,6 @@ TSL.Netplay = (() => {
   }
 
 
-  // RetroPad indices: 0=B 1=Y 2=SELECT 3=START 4..7=dpad 8=A 9=X 10=L 11=R.
-  // FBNeo CPS-3 layout: Y=LP X=MP L=HP B=LK A=MK R=HK.
-  const CONTROLS = {
-    0: {
-      1:  { value: "u", value2: "BUTTON_4" },      // LP
-      9:  { value: "i", value2: "BUTTON_3" },      // MP
-      10: { value: "o", value2: "LEFT_TOP_SHOULDER" }, // HP
-      0:  { value: "j", value2: "BUTTON_2" },      // LK
-      8:  { value: "k", value2: "BUTTON_1" },      // MK
-      11: { value: "l", value2: "RIGHT_TOP_SHOULDER" }, // HK
-      2:  { value: "space", value2: "SELECT" },    // coin
-      3:  { value: "enter", value2: "START" },
-      4:  { value: "up arrow", value2: "DPAD_UP" },
-      5:  { value: "down arrow", value2: "DPAD_DOWN" },
-      6:  { value: "left arrow", value2: "DPAD_LEFT" },
-      7:  { value: "right arrow", value2: "DPAD_RIGHT" }
-    },
-    // EmulatorJS 4.2.x replaces its whole table with this object and then
-    // touches players 2-4, so they must exist even when empty.
-    1: {}, 2: {}, 3: {}
-  };
-
   function emu() { return window.EJS_emulator || null; }
   function np() { const e = emu(); return e && e.netplay ? e.netplay : null; }
   function report(state, extra) { if (opts && opts.onStatus) opts.onStatus(Object.assign({ state }, extra || {})); }
@@ -107,10 +87,14 @@ TSL.Netplay = (() => {
   function configureEJS() {
     const cfg = TSL.config;
     window.EJS_player = "#ejs";
-    window.EJS_core = "arcade";               // FBNeo
+    const game = opts.game;
+    window.EJS_core = game.core;              // "arcade" = FBNeo
     // Either a File object (EmulatorJS keeps its name) or a URL to a packaged set.
     window.EJS_gameUrl = opts.rom.file || opts.rom.url;
-    window.EJS_gameName = opts.rom.name.replace(/\.zip$/i, "");
+    window.EJS_gameName = game.id;
+    // Neo Geo and friends: the BIOS zip, same File-or-URL rule. EmulatorJS writes
+    // it next to the game unextracted, where FBNeo finds it by name.
+    window.EJS_biosUrl = opts.bios ? (opts.bios.file || opts.bios.url) : "";
     window.EJS_pathtodata = cfg.ejsDataPath;
     // The pinned copy (scripts/fetch-emulatorjs.sh) is the unminified git tree:
     // point the loader at the source files directly instead of 404ing on the
@@ -123,9 +107,11 @@ TSL.Netplay = (() => {
     }
     window.EJS_netplayServer = cfg.netplayUrl;
     window.EJS_netplayICEServers = cfg.iceServers;
-    window.EJS_gameID = Number(cfg.gameId);
+    // Rooms are namespaced per game on the netplay server, so a 3rd Strike
+    // lobby never lists (or joins) a KOF room.
+    window.EJS_gameID = Number(game.netplayId);
     window.EJS_startOnLoaded = true;
-    window.EJS_defaultControls = CONTROLS;
+    window.EJS_defaultControls = TSL.Games.controls(game);
     window.EJS_color = "#ff4d2e";
     window.EJS_backgroundColor = "#000000";
     window.EJS_Buttons = {
@@ -133,14 +119,9 @@ TSL.Netplay = (() => {
       quickLoad: false, cacheManager: false, exitEmulation: false, screenRecord: false,
       saveSavFiles: false, loadSavFiles: false
     };
-    // Match Fightcade's sfiii3nr1 setup (its fcadefbneo/games/sfiii3nr1.ini:
-    // Region 0x01 = Japan, cpu 0x0100 = 100%). These are the FBNeo core's own
-    // defaults for this driver too; pinning them keeps every player identical.
-    window.EJS_coreOpts = {
-      "fbneo-dipswitch-sfiii3nr1-Region": "Japan",
-      "fbneo-cpu-speed-adjust": "100%",
-      "fbneo-frameskip-type": "disabled"
-    };
+    // Pinned per game (web/games/<id>.json coreOpts) so every player runs
+    // identical settings, e.g. 3rd Strike Region = Japan as on Fightcade.
+    window.EJS_coreOpts = Object.assign({}, game.coreOpts);
     // Threaded core (fbneo-thread-*.data) needs SharedArrayBuffer, which only
     // exists in a cross-origin isolated page: the pop-out tab, never the Matrix
     // iframe. server/serve.js sends COOP/COEP for ?isolate=1. Measured on CPS-3:
@@ -347,7 +328,8 @@ TSL.Netplay = (() => {
         const f = e.gameManager.getFrameNum();
         if (lastFrame !== null) fps = Math.round((f - lastFrame) * 1000 / (now - lastT));
         lastFrame = f; lastT = now;
-        slowStreak = fps !== null && fps < 50 ? slowStreak + 1 : 0;
+        const warnBelow = (opts.game.performance && opts.game.performance.warnBelowFps) || 50;
+        slowStreak = fps !== null && fps < warnBelow ? slowStreak + 1 : 0;
       }
       const link = e.isNetplay ? await TSL.Tuning.sample() : null;
       // ICE gave up on every peer and nothing is connected: no route between the
@@ -371,7 +353,6 @@ TSL.Netplay = (() => {
   }
 
   return {
-    CONTROLS,
     getInputDelay() { return inputDelay; },
     /** For tests and the console: current frame and queued (delayed) presses. */
     debugDelay() { return { frame, queued: queue.map((q) => ({ at: q.at, index: q.index, value: q.value })) }; },
@@ -392,11 +373,11 @@ TSL.Netplay = (() => {
     /** Guest: ask the host for a rematch. */
     requestRematch() { sendTsl({ rematch: "request", name: opts && opts.name }); },
     getRoster() { return roster; },
-    /** opts: { rom:{file,name}, code, role:'host'|'guest'|'spectator', sid?, name,
+    /** opts: { game, rom:{file|url,name}, bios?:{file|url,name}, code, role:'host'|'guest'|'spectator', sid?, name,
                 onStatus, onStats, onRematchRequest(name), onRematchDone() } */
     start(o) {
       opts = o;
-      inputDelay = readDelay();   // config.json (inputDelayDefault) has loaded by now
+      inputDelay = readDelay();   // config.json and the game file have loaded by now
       configureEJS();
       report("loading");
       injectLoader();
