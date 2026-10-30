@@ -3,3 +3,5 @@ node_modules/
 .env
 *.zip
 web/ejs/
+__pycache__/
+*.pyc
