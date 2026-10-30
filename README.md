@@ -174,3 +174,14 @@ Measured on this machine in the desktop app's browser pane: the host runs CPS-3 
 * `/config.json` hands the ICE server list, including any static TURN username and credential, to every visitor. That is inherent to browser WebRTC; use time-limited TURN credentials if the TURN server matters.
 * Each game accepts exactly one set (the Fightcade one). Other revisions, such as `sfiii3n`, would need their own game file.
 * EmulatorJS does not remember its own settings (such as volume) between visits: saving them would let a stale copy override each game's pinned options. Button remaps are saved separately (see Controls).
+
+## License
+
+The code in this repository is released under the [MIT License](LICENSE).
+
+It covers this project's own code only. Things it uses keep their own terms:
+
+* **EmulatorJS** is GPL-3.0. It is not in this repository, but `scripts/fetch-emulatorjs.sh` and the web Docker image download a pinned copy; anyone distributing that image must follow GPL-3.0 for it.
+* **The FinalBurn Neo core** uses FBNeo's own license, which forbids commercial use. Nothing that bundles the core may be sold.
+* **The EmulatorJS netplay server** and **matrix-widget-api** are Apache-2.0.
+* **Game ROMs** belong to their publishers (Capcom, SNK and others). None are included or downloaded; players supply their own.
