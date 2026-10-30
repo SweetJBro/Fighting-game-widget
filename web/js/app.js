@@ -245,6 +245,8 @@
   async function enterLobby() {
     if (!gameReady()) { show("screen-rom"); return; }
     show("screen-lobby");
+    $("btn-local").classList.toggle("hidden", state.mode === "direct");
+    $("btn-local").onclick = () => startMatch({ code: "LOCAL", role: "local" });
     if (state.mode === "direct") return startDirect();
     if (state.mode === "matrix") return matrixLobby();
     return standaloneLobby();
@@ -452,12 +454,12 @@
   async function startMatch({ code, role, sid }) {
     state.name = myName(); localStorage.setItem("tsl.name", state.name);
     // Fail fast with a clear message instead of a silent socket.io retry loop.
-    if (state.serverPing === null) await refreshPing();
-    if (state.serverPing === null) {
+    if (role !== "local" && state.serverPing === null) await refreshPing();
+    if (role !== "local" && state.serverPing === null) {
       toast("Can't reach the netplay server at " + cfg.netplayUrl + ". Check that it is running and that NETPLAY_URL points at it.", true);
       return;
     }
-    if (popoutPref() && openPopout({ code, role, sid })) return;
+    if (role !== "local" && popoutPref() && openPopout({ code, role, sid })) return;
     clearInterval(state.pollTimer);
     state.current = { code, role, sid, game: state.game.id };
     sel.disabled = true;
@@ -466,7 +468,7 @@
     $("delay-wrap").classList.toggle("hidden", role !== "host");
     $("input-delay").value = String(TSL.Netplay.getInputDelay());
     show("screen-match");
-    $("match-role").textContent = { host: "P1 · host", guest: "P2 · guest", spectator: "watching" }[role];
+    $("match-role").textContent = { host: "P1 · host", guest: "P2 · guest", spectator: "watching", local: "local · 2 players" }[role];
     $("btn-rematch").classList.add("hidden");
     $("btn-watch-link").classList.toggle("hidden", role !== "host");
     $("match-code").textContent = code;
@@ -497,6 +499,15 @@
           $("match-role").textContent = "watching";
           $("btn-popout").classList.add("hidden");
           if (s.bumped && !state.bumpedNotified) { state.bumpedNotified = true; toast("This match already has an opponent, so you are watching."); }
+        }
+        else if (s.state === "local") {
+          setStatus("local match · one controller per player", "ok");
+          $("match-code").textContent = "";
+          $("delay-wrap").classList.add("hidden");
+          $("btn-popout").classList.add("hidden");
+          $("btn-rematch").textContent = "Restart";
+          $("btn-rematch").classList.remove("hidden");
+          $("controls-help").classList.remove("hidden");   // show the controller panel straight away
         }
         else if (s.state === "error") { setStatus(s.message, "err"); toast(s.message, true); }
       },
@@ -546,7 +557,7 @@
     toast(d === 0 ? "Input delay off" : "Your inputs now land " + d + " frame" + (d > 1 ? "s" : "") + " later");
   });
   $("btn-rematch").addEventListener("click", () => {
-    if (state.current && state.current.role === "host") {
+    if (state.current && (state.current.role === "host" || state.current.role === "local")) {
       if (TSL.Netplay.rematch()) { toast("Game restarted. Insert coin and press Start."); $("rematch-ask").classList.add("hidden"); }
     } else {
       TSL.Netplay.requestRematch();
@@ -570,6 +581,48 @@
     if (!w) { toast("Your browser blocked the new tab.", true); return; }
     location.href = cleanUrl();   // EmulatorJS cannot be torn down in place
   });
+  /* ---------- Controllers ---------- */
+  function padsNow() {
+    if (TSL.Netplay.isStarted && TSL.Netplay.isStarted()) return TSL.Netplay.pads();
+    return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean)
+      .map((gp) => ({ index: gp.index, id: gp.id, player: -1, standard: gp.mapping === "standard" }));
+  }
+  const shortPad = (id) => id.replace(/\s*\((?:STANDARD GAMEPAD|Vendor:)[^)]*\)/i, "").replace(/\s+/g, " ").trim() || id;
+  let lastPadJson = "";
+  function renderPads() {
+    const list = padsNow();
+    const b = $("pad-badge");
+    b.textContent = list.length ? list.length + " controller" + (list.length > 1 ? "s" : "") : "no controller";
+    b.classList.toggle("badge-muted", !list.length); b.classList.toggle("badge-ok", !!list.length);
+    b.title = list.length ? list.map((p) => shortPad(p.id)).join("\n") : b.title;
+    const json = JSON.stringify(list) + (state.current ? state.current.role : "");
+    if (json === lastPadJson) return;
+    lastPadJson = json;
+    const ul = $("pad-list"); ul.innerHTML = "";
+    $("pad-empty").classList.toggle("hidden", list.length > 0);
+    const local = state.current && state.current.role === "local";
+    for (const p of list) {
+      const li = document.createElement("li");
+      const name = document.createElement("span"); name.className = "pad-name"; name.textContent = shortPad(p.id) + (p.standard ? "" : " (non-standard layout)");
+      li.appendChild(name);
+      if (local) {
+        const sel = document.createElement("select");
+        [["-1", "not playing"], ["0", "Player 1"], ["1", "Player 2"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o); });
+        sel.value = String(p.player <= 1 ? p.player : -1);
+        sel.onchange = () => { TSL.Netplay.assignPad(p.index, Number(sel.value)); lastPadJson = ""; renderPads(); };
+        li.appendChild(sel);
+      } else {
+        const tag = document.createElement("span"); tag.className = "meta";
+        tag.textContent = state.current ? (state.current.role === "spectator" ? "ignored while watching" : "drives your player") : "ready";
+        li.appendChild(tag);
+      }
+      ul.appendChild(li);
+    }
+  }
+  window.addEventListener("gamepadconnected", renderPads);
+  window.addEventListener("gamepaddisconnected", () => { lastPadJson = ""; renderPads(); });
+  setInterval(renderPads, 1000);
+
   function setStatus(text, cls) { const el = $("match-status"); el.textContent = text; el.className = "status" + (cls ? " " + cls : ""); }
 
   $("btn-leave").addEventListener("click", () => {

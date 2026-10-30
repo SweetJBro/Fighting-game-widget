@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting Game Widget</title>
-  <link rel="stylesheet" href="css/app.css?v=25">
+  <link rel="stylesheet" href="css/app.css?v=26">
 </head>
 <body>
   <header class="topbar">
@@ -16,6 +16,7 @@
     <div class="topbar-right">
       <span id="mode-badge" class="badge">standalone</span>
       <span id="rom-badge" class="badge badge-muted">no ROM</span>
+      <span id="pad-badge" class="badge badge-muted" title="Controllers this page can see. Browsers only show a controller after one of its buttons is pressed.">no controller</span>
       <span id="ping-badge" class="badge badge-muted" title="Round trip from this browser to the netplay server">server …</span>
       <button id="btn-rom-settings" class="btn btn-ghost btn-sm" title="Change ROM">ROM</button>
     </div>
@@ -69,6 +70,7 @@
           <div class="row">
             <button id="btn-host" class="btn btn-primary">Host a match</button>
             <button id="btn-open-challenge" class="btn btn-primary hidden">Post open challenge</button>
+            <button id="btn-local" class="btn" title="Two players on this machine, one controller each. No netplay.">Local match</button>
           </div>
 
           <label id="popout-row" class="check">
@@ -152,7 +154,13 @@
           <tr><th>Move</th><td>Arrow keys</td><th>Gamepad</th><td>Plug in and press a button</td></tr>
           <tbody id="controls-buttons"></tbody>
         </table>
-        <p class="hint">Host is Player 1, guest is Player 2. The guest's keys are sent to the host's game automatically.</p>
+        <p class="hint">Host is Player 1, guest is Player 2. The guest's keys and controller are sent to the host's game automatically.
+          On a controller or Xbox-mode arcade stick, punches are X / Y / RB and kicks A / B / RT (KOF: A = X, C = Y, B = A, D = B). The left stick and D-pad both move.</p>
+        <div id="pad-panel">
+          <h4 class="pad-title">Controllers</h4>
+          <ul id="pad-list" class="list"></ul>
+          <p id="pad-empty" class="hint">No controller seen yet. Press any button on it.</p>
+        </div>
       </div>
     </section>
 
@@ -162,12 +170,12 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/games.js?v=25"></script>
-  <script src="js/config.js?v=25"></script>
-  <script src="js/romstore.js?v=25"></script>
-  <script src="js/netplay-tuning.js?v=25"></script>
-  <script src="js/netplay-bridge.js?v=25"></script>
-  <script src="js/matrix-lobby.js?v=25"></script>
-  <script src="js/app.js?v=25"></script>
+  <script src="js/games.js?v=26"></script>
+  <script src="js/config.js?v=26"></script>
+  <script src="js/romstore.js?v=26"></script>
+  <script src="js/netplay-tuning.js?v=26"></script>
+  <script src="js/netplay-bridge.js?v=26"></script>
+  <script src="js/matrix-lobby.js?v=26"></script>
+  <script src="js/app.js?v=26"></script>
 </body>
 </html>

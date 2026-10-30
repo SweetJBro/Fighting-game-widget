@@ -29,20 +29,35 @@ TSL.Games = (() => {
     return list.find((g) => (g.aliases || []).includes(r)) || null;
   }
 
-  /** EmulatorJS controller table (player 1) built from the game's input map. */
+  /** EmulatorJS controller table built from the game's input map.
+      Player 1 gets keyboard keys and pad buttons; players 2-4 get the same pad
+      buttons and no keys (local matches: a second controller is Player 2).
+
+      EmulatorJS MERGES this table into its own defaults. Those defaults bind
+      L2/R2/L3/R3 (12-15) to pad triggers and sticks, and the analog sticks
+      (16-23) to keyboard keys i/j/k/l, so a game using RT for Heavy Kick would
+      also fire "R2", and the I key would also push a stick. Therefore:
+        0-15 the game does not use: no key, no pad button
+        16-23 (analog sticks):      no key, default pad stick kept (the left
+                                    stick moves the character in FBNeo)
+        24+ are EmulatorJS hotkeys and are left alone. */
   function controls(game) {
-    const p1 = {};
-    // EmulatorJS MERGES this table into its own defaults, which bind the analog
-    // sticks (16-23) and L2/R2/L3/R3 (12-15) to keyboard keys such as i/j/k/l.
-    // Those keys would fire a stick alongside our buttons, so clear the KEYBOARD
-    // key of every entry the game does not use. Only `value` is cleared: the
-    // merge keeps the default gamepad binding (`value2`), so sticks still work on
-    // a pad. 24+ are EmulatorJS hotkeys and stay as they are.
-    for (let i = 0; i < 24; i++) p1[i] = { value: "" };
-    for (const [idx, b] of Object.entries(game.input)) p1[idx] = { value: b.key, value2: b.pad };
-    // EmulatorJS replaces its whole table with this object and then touches
-    // players 2-4, so they must exist even when empty.
-    return { 0: p1, 1: {}, 2: {}, 3: {} };
+    const table = {};
+    for (let player = 0; player < 4; player++) {
+      const t = {};
+      for (let i = 0; i < 16; i++) t[i] = { value: "", value2: "" };
+      for (let i = 16; i < 24; i++) t[i] = { value: "" };
+      for (const [idx, b] of Object.entries(game.input)) {
+        t[idx] = { value: player === 0 ? b.key : "", value2: b.pad };
+      }
+      table[player] = t;
+    }
+    return table;
+  }
+
+  /** Stable fingerprint of a game's default bindings; saved remaps are dropped when it changes. */
+  function inputFingerprint(game) {
+    return JSON.stringify(Object.entries(game.input).sort().map(([i, b]) => [i, b.key, b.pad]));
   }
 
   /** [{ label, key }] for the Controls help, buttons first. */
@@ -52,7 +67,7 @@ TSL.Games = (() => {
   }
 
   return {
-    load, find, controls, controlsHelp,
+    load, find, controls, controlsHelp, inputFingerprint,
     all: () => list,
     get: (id) => byId[id] || null,
     defaultId: () => defaultId

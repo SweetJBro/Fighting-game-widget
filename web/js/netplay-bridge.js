@@ -27,6 +27,72 @@ TSL.Netplay = (() => {
 
   function sendTsl(msg) { const n = np(); if (n) n.sendMessage({ tsl: msg }); }
 
+  // ---- controllers --------------------------------------------------------
+  // EmulatorJS's own settings storage is off (it would override the game file),
+  // so remaps made in its Control Settings menu are saved here instead, per
+  // game, and dropped if the game file's default bindings change.
+  const remapKey = () => "tsl.controls." + opts.game.id;
+  function loadRemaps() {
+    const e = emu();
+    try {
+      const saved = JSON.parse(localStorage.getItem(remapKey()) || "null");
+      if (saved && saved.fp === TSL.Games.inputFingerprint(opts.game) && saved.controls) {
+        e.controls = saved.controls;
+        if (e.frontend && e.frontend.checkGamepadInputs) e.frontend.checkGamepadInputs();
+      }
+    } catch (_) {}
+    const orig = e.saveSettings.bind(e);
+    e.saveSettings = () => {
+      orig();
+      if (!e.started) return;
+      try { localStorage.setItem(remapKey(), JSON.stringify({ fp: TSL.Games.inputFingerprint(opts.game), controls: e.controls })); } catch (_) {}
+    };
+  }
+
+  // Which physical controller drives which player, remembered by controller
+  // name: { "Qanba ... (STANDARD GAMEPAD ...)": 0 }. EmulatorJS would otherwise
+  // hand out player slots in connection order, and virtual pads (Steam Input)
+  // can take Player 1 and 2 before a real stick does.
+  const PAD_KEY = "tsl.padPlayers";
+  function padPrefs() { try { return JSON.parse(localStorage.getItem(PAD_KEY) || "{}"); } catch (_) { return {}; } }
+  function selectionValue(gp) { return gp.id + "_" + gp.index; }
+  function livePads() { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean); }
+  function applyPadPrefs() {
+    const e = emu();
+    const sel = e && e.frontend && e.frontend.gamepadSelection;
+    if (!sel) return;
+    const prefs = padPrefs();
+    for (const gp of livePads()) {
+      const want = prefs[gp.id];
+      if (typeof want !== "number" || want < 0 || want >= sel.length) continue;
+      const v = selectionValue(gp);
+      if (sel[want] === v) continue;
+      for (let i = 0; i < sel.length; i++) if (sel[i] === v) sel[i] = "";
+      sel[want] = v;
+    }
+  }
+  function pads() {
+    const e = emu();
+    const sel = (e && e.frontend && e.frontend.gamepadSelection) || [];
+    return livePads().map((gp) => ({ index: gp.index, id: gp.id, player: sel.indexOf(selectionValue(gp)), standard: gp.mapping === "standard" }));
+  }
+  function assignPad(index, player) {
+    const gp = livePads().find((g) => g.index === index);
+    if (!gp) return;
+    const prefs = padPrefs();
+    // One controller per player: whoever held this player slot gives it up.
+    for (const [id, p] of Object.entries(prefs)) if (p === player && id !== gp.id) delete prefs[id];
+    if (player < 0) delete prefs[gp.id]; else prefs[gp.id] = player;
+    try { localStorage.setItem(PAD_KEY, JSON.stringify(prefs)); } catch (_) {}
+    const e = emu();
+    const sel = e && e.frontend && e.frontend.gamepadSelection;
+    if (sel) {
+      const v = selectionValue(gp);
+      for (let i = 0; i < sel.length; i++) if (sel[i] === v || (i === player)) sel[i] = "";
+      if (player >= 0) sel[player] = v;
+    }
+  }
+
   // ---- host input delay -------------------------------------------------
   const DELAY_KEY = "tsl.inputDelay";
   let inputDelay = readDelay();
@@ -177,10 +243,19 @@ TSL.Netplay = (() => {
     if (!n.updateList) n.defineNetplayFunctions();
     if (!n.url) { report("error", { message: "Netplay server URL is not configured." }); return; }
     shimSaveStates();
+    loadRemaps();
+    applyPadPrefs();
+    window.addEventListener("gamepadconnected", () => setTimeout(applyPadPrefs, 50));
     installInputDelay();
     hookMessages(n);
     startMonitor();
 
+    if (opts.role === "local") {
+      // Same machine, no room: EmulatorJS routes each controller to its own
+      // player, so a second controller is Player 2.
+      report("local");
+      return;
+    }
     if (opts.role === "host") {
       report("hosting");
       TSL.Tuning.inputFilter = hostInputFilter;
@@ -371,7 +446,9 @@ TSL.Netplay = (() => {
     /** Host: restart the game for a rematch, keeping room, peers and stream. */
     rematch() {
       const e = emu(), n = np();
-      if (!e || !e.gameManager || !n || !n.owner) return false;
+      if (!e || !e.gameManager) return false;
+      if (opts.role === "local") { e.gameManager.restart(); return true; }
+      if (!n || !n.owner) return false;
       queue.length = 0;
       e.gameManager.restart();
       sendTsl({ rematch: "done" });
@@ -380,6 +457,10 @@ TSL.Netplay = (() => {
     /** Guest: ask the host for a rematch. */
     requestRematch() { sendTsl({ rematch: "request", name: opts && opts.name }); },
     getRoster() { return roster; },
+    /** Live controllers: [{ index, id, player (-1 = none), standard }]. */
+    pads,
+    /** Make controller `index` drive `player` (0-based; -1 = none). Remembered by controller name. */
+    assignPad,
     /** opts: { game, rom:{file|url,name}, bios?:{file|url,name}, code, role:'host'|'guest'|'spectator', sid?, name,
                 onStatus, onStats, onRematchRequest(name), onRematchDone() } */
     start(o) {
@@ -394,6 +475,8 @@ TSL.Netplay = (() => {
       const n = np();
       try { if (n && emu().isNetplay) n.leaveRoom(); } catch (_) {}
     },
-    isConnected() { const e = emu(); return !!(e && e.isNetplay); }
+    isConnected() { const e = emu(); return !!(e && e.isNetplay); },
+    /** The emulator is running (any role, including local). */
+    isStarted() { const e = emu(); return !!(e && e.started); }
   };
 })();

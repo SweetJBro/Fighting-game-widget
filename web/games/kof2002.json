@@ -295,7 +295,7 @@
   "input": {
     "0": {
       "key": "u",
-      "pad": "BUTTON_2",
+      "pad": "BUTTON_3",
       "label": "A (LP)"
     },
     "8": {
@@ -310,7 +310,7 @@
     },
     "9": {
       "key": "k",
-      "pad": "BUTTON_3",
+      "pad": "BUTTON_2",
       "label": "D (HK)"
     },
     "2": {

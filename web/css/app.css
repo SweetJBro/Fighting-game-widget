@@ -152,3 +152,9 @@ input[readonly] { color: var(--muted); }
 .game-select:disabled { opacity: .6; }
 .game-tag { display: inline-block; font-size: 11px; padding: 0 6px; margin-left: 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); vertical-align: middle; }
 @media (max-width: 600px) { .brand-mark { display: none; } }
+
+/* Controllers */
+.pad-title { margin: 12px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+#pad-list li { padding: 6px 0; }
+#pad-list select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+.pad-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60vw; }

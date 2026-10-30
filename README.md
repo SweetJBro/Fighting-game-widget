@@ -142,12 +142,17 @@ The bot discovers the API and gateway from `https://fluxer.app/.well-known/fluxe
 
 | | 3rd Strike, Super Turbo | KOF 2002 |
 |---|---|---|
-| Move | arrow keys | arrow keys |
-| Punches | U / I / O (LP / MP / HP) | U = A (LP), I = C (HP) |
-| Kicks | J / K / L (LK / MK / HK) | J = B (LK), K = D (HK) |
-| Start / Coin | Enter / Space | Enter / Space |
+| Move | arrow keys · D-pad · left stick | arrow keys · D-pad · left stick |
+| Punches | keys U / I / O · pad X / Y / RB (LP / MP / HP) | U = A (LP), I = C (HP) · pad X = A, Y = C |
+| Kicks | keys J / K / L · pad A / B / RT (LK / MK / HK) | J = B (LK), K = D (HK) · pad A = B, B = D |
+| Start / Coin | Enter / Space · Start / Back | Enter / Space · Start / Back |
 
-Every button was checked in each board's own input test (the CPS-3 and CPS-2 test menus and the Neo Geo MVS I/O check), key by key. The match bar's **Controls** button shows the current game's keys. Gamepads work through EmulatorJS's gamepad support. Host is P1, guest is P2; the guest's own P1 bindings are sent to the host and applied to P2.
+The pad layout is the usual one for Xbox-style controllers and for arcade sticks in Xbox mode (top row X Y RB LB, bottom row A B RT LT), such as Qanba, Hori and 8BitDo sticks. Every button was checked in each board's own input test (the CPS-3 and CPS-2 test menus and the Neo Geo MVS I/O check), from both the keyboard and a controller. The match bar's **Controls** button shows the current game's keys and the controllers the page can see.
+
+* **Controllers.** The top bar counts the controllers the page sees. Browsers reveal a controller only after one of its buttons is pressed while the page is open, so press any button once.
+* **Netplay.** Every controller on your machine drives your own player; the guest's controller reaches the host's game the same way as their keyboard.
+* **Local match.** The lobby's **Local match** runs the game with no room: two controllers on one machine are Player 1 and Player 2. The controller panel picks which controller is which, and the choice is remembered by controller name. That matters with Steam Input, which adds virtual pads that would otherwise take the first slots.
+* **Remapping.** Buttons can be rebound in EmulatorJS's Control Settings (the gamepad icon). Remaps are saved per game in this browser and reset automatically if a game's default layout changes.
 
 ## Performance
 
@@ -161,4 +166,4 @@ Measured on this machine in the desktop app's browser pane: the host runs CPS-3 
 * Fluxer's mention syntax in message content is assumed to be Discord-style `<@id>`; that part of the docs was not explicit.
 * `/config.json` hands the ICE server list, including any static TURN username and credential, to every visitor. That is inherent to browser WebRTC; use time-limited TURN credentials if the TURN server matters.
 * Each game accepts exactly one set (the Fightcade one). Other revisions, such as `sfiii3n`, would need their own game file.
-* EmulatorJS does not remember its own settings (such as volume) between visits: saving them would let a stale copy override each game's pinned options and buttons.
+* EmulatorJS does not remember its own settings (such as volume) between visits: saving them would let a stale copy override each game's pinned options. Button remaps are saved separately (see Controls).

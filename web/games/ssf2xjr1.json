@@ -149,32 +149,32 @@
   "input": {
     "1": {
       "key": "u",
-      "pad": "BUTTON_4",
+      "pad": "BUTTON_3",
       "label": "LP"
     },
     "9": {
       "key": "i",
-      "pad": "BUTTON_3",
+      "pad": "BUTTON_4",
       "label": "MP"
     },
     "10": {
       "key": "o",
-      "pad": "LEFT_TOP_SHOULDER",
+      "pad": "RIGHT_TOP_SHOULDER",
       "label": "HP"
     },
     "0": {
       "key": "j",
-      "pad": "BUTTON_2",
+      "pad": "BUTTON_1",
       "label": "LK"
     },
     "8": {
       "key": "k",
-      "pad": "BUTTON_1",
+      "pad": "BUTTON_2",
       "label": "MK"
     },
     "11": {
       "key": "l",
-      "pad": "RIGHT_TOP_SHOULDER",
+      "pad": "RIGHT_BOTTOM_SHOULDER",
       "label": "HK"
     },
     "2": {
