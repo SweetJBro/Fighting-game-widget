@@ -14,6 +14,12 @@
   romset.py verify GAME ZIP         Check a zip against GAME's manifest.
   romset.py bios GAME ZIP [-o OUT]  Verify (and copy) the BIOS zip GAME needs, e.g.
                                     neogeo.zip for Neo Geo games.
+  romset.py add DAT SET [--name N] [--short S] [--aliases a,b] [--layout six|neo]
+                                    Write web/games/SET.json with the manifest from the
+                                    DAT, default buttons for the layout (six = Capcom
+                                    style LP MP HP / LK MK HK, neo = A B C D), pinned
+                                    core options and the next free netplayId, and add
+                                    SET to web/games/index.json.
 
 GAME is a game id from web/games/index.json (e.g. sfiii3nr1, ssf2xjr1, kof2002)
 or a path to a game JSON file.
@@ -75,6 +81,83 @@ def cmd_manifest(dat, name):
                         for r in bios.findall("rom")],
         }
     print(json.dumps(out, indent=2))
+
+
+# ---------- add a game ----------
+# Keyboard: punches top row (U I O), kicks bottom row (J K L).
+# Pad / Xbox-mode arcade stick: top row X Y RB, bottom row A B RT.
+# Keys are RetroPad indices as EmulatorJS numbers them; the FBNeo mapping was
+# verified on the CPS-2, CPS-3 and Neo Geo boards' own input tests.
+LAYOUTS = {
+    "six": {
+        "1":  ("u", "BUTTON_3", "LP"), "9":  ("i", "BUTTON_4", "MP"), "10": ("o", "RIGHT_TOP_SHOULDER", "HP"),
+        "0":  ("j", "BUTTON_1", "LK"), "8":  ("k", "BUTTON_2", "MK"), "11": ("l", "RIGHT_BOTTOM_SHOULDER", "HK"),
+    },
+    "neo": {
+        "0": ("u", "BUTTON_3", "A (LP)"), "1": ("i", "BUTTON_4", "C (HP)"),
+        "8": ("j", "BUTTON_1", "B (LK)"), "9": ("k", "BUTTON_2", "D (HK)"),
+    },
+}
+COMMON_INPUT = {
+    "2": ("space", "SELECT", "Coin"), "3": ("enter", "START", "Start"),
+    "4": ("up arrow", "DPAD_UP", "Up"), "5": ("down arrow", "DPAD_DOWN", "Down"),
+    "6": ("left arrow", "DPAD_LEFT", "Left"), "7": ("right arrow", "DPAD_RIGHT", "Right"),
+}
+
+
+def build_game(dat, name, title=None, short=None, aliases=None, layout=None, netplay_id=None):
+    root = ET.parse(dat).getroot()
+    g = root.find(f"./game[@name='{name}']")
+    if g is None:
+        sys.exit(f"{name} not in {dat}")
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cmd_manifest(dat, name)
+    m = json.loads(buf.getvalue())
+    board = (g.findtext("manufacturer") or "")
+    if layout is None:
+        layout = "neo" if m.get("bios", {}).get("id") == "neogeo" else "six"
+    desc = g.findtext("description") or name
+    game = {
+        "id": name,
+        "name": title or desc.split(" (")[0],
+        "short": short or (title or desc.split(" (")[0])[:20],
+        "aliases": aliases or [],
+        "hardware": "Neo Geo" if layout == "neo" else (board or "Arcade"),
+        "core": "arcade",
+        "netplayId": netplay_id,
+        "rom": m["rom"],
+    }
+    if "bios" in m:
+        game["bios"] = {**m["bios"], "label": "Neo Geo BIOS" if m["bios"]["id"] == "neogeo" else m["bios"]["id"] + " BIOS"}
+        if m["bios"]["id"] == "neogeo":
+            game["bios"]["required"] = ["sp-s2.sp1", "sm1.sm1", "sfix.sfix", "000-lo.lo"]
+    game["coreOpts"] = {"fbneo-cpu-speed-adjust": "100%", "fbneo-frameskip-type": "disabled", "fbneo-diagnostic-input": "None"}
+    game["input"] = {i: {"key": k, "pad": p, "label": lbl} for i, (k, p, lbl) in {**LAYOUTS[layout], **COMMON_INPUT}.items()}
+    game["netplay"] = {"defaultInputDelay": 3, "players": 2}
+    game["performance"] = {"fps": 59.2 if layout == "neo" else 60, "warnBelowFps": 50}
+    return game
+
+
+def cmd_add(dat, name, opts):
+    idx_path = os.path.join(GAMES, "index.json")
+    idx = json.load(open(idx_path))
+    used = [json.load(open(os.path.join(GAMES, gid + ".json")))["netplayId"] for gid in idx["games"]]
+    game = build_game(dat, name, opts.get("--name"), opts.get("--short"),
+                      [a for a in (opts.get("--aliases") or "").split(",") if a], opts.get("--layout"),
+                      max(used + [32]) + 1)
+    out = os.path.join(GAMES, name + ".json")
+    if os.path.exists(out):
+        sys.exit(f"{out} already exists")
+    json.dump(game, open(out, "w"), indent=2)
+    if name not in idx["games"]:
+        idx["games"].append(name)
+        json.dump(idx, open(idx_path, "w"), indent=2)
+    print(f"wrote {out} ({len(game['rom']['members'])} files"
+          + (f" + {game['bios']['file']}" if "bios" in game else "")
+          + f", layout {'neo' if game['hardware'] == 'Neo Geo' else 'six'}, netplayId {game['netplayId']}) and added it to index.json")
+    print("check: name/short/aliases, hardware, coreOpts (region DIP switches), then romset.py merge/verify and boot it")
 
 
 # ---------- merge / verify ----------
@@ -177,6 +260,12 @@ def main(argv):
         cmd_verify(*args)
     elif cmd == "bios" and len(args) == 2:
         cmd_bios(args[0], args[1], out)
+    elif cmd == "add" and len(args) >= 2:
+        flags = {}
+        rest = args[2:]
+        for i in range(0, len(rest) - 1, 2):
+            flags[rest[i]] = rest[i + 1]
+        cmd_add(args[0], args[1], flags)
     else:
         print(__doc__); sys.exit(2)
 

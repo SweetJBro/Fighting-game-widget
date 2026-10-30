@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting Game Widget</title>
-  <link rel="stylesheet" href="css/app.css?v=26">
+  <link rel="stylesheet" href="css/app.css?v=27">
 </head>
 <body>
   <header class="topbar">
@@ -70,6 +70,10 @@
           <div class="row">
             <button id="btn-host" class="btn btn-primary">Host a match</button>
             <button id="btn-open-challenge" class="btn btn-primary hidden">Post open challenge</button>
+            <label id="seats-wrap" class="delay" title="How many people can watch matches you host. Each watcher costs you one more video stream to upload.">
+              Watch seats
+              <select id="seats"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            </label>
             <button id="btn-local" class="btn" title="Two players on this machine, one controller each. No netplay.">Local match</button>
           </div>
 
@@ -170,12 +174,12 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/games.js?v=26"></script>
-  <script src="js/config.js?v=26"></script>
-  <script src="js/romstore.js?v=26"></script>
-  <script src="js/netplay-tuning.js?v=26"></script>
-  <script src="js/netplay-bridge.js?v=26"></script>
-  <script src="js/matrix-lobby.js?v=26"></script>
-  <script src="js/app.js?v=26"></script>
+  <script src="js/games.js?v=27"></script>
+  <script src="js/config.js?v=27"></script>
+  <script src="js/romstore.js?v=27"></script>
+  <script src="js/netplay-tuning.js?v=27"></script>
+  <script src="js/netplay-bridge.js?v=27"></script>
+  <script src="js/matrix-lobby.js?v=27"></script>
+  <script src="js/app.js?v=27"></script>
 </body>
 </html>

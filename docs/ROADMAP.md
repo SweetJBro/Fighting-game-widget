@@ -59,15 +59,22 @@ Findings along the way:
 | Controllers | Standard fighting-game pad / Xbox-mode stick layout for all games; unused EmulatorJS default pad bindings cleared (RT no longer also fires "R2"); left stick and D-pad move; players 2-4 get pad bindings; Local match mode for two controllers on one machine with a controller-to-player picker remembered by controller name; remaps saved per game. Tested on the CPS-2 input test with two simulated controllers, then with real hardware: a Qanba Q4 Pro-X stick as Player 1 and a Steam Controller (Steam Input, Gamepad desktop layout) as Player 2, every button and direction landing on the right player |
 | Stray stick inputs fixed | EmulatorJS merges our button table into its defaults, which bound i/j/k/l to the right analog stick; those keyboard bindings are now cleared (gamepad sticks kept) |
 
+### Polish
+
+| Task | Result |
+|---|---|
+| Instant rematch | Board state saved at the first coin of the session (title/attract, no credits); rematch loads it instead of rebooting. Verified on Super Turbo and 3rd Strike: character select back to the attract screen at once |
+| Matrix-aware Player 2 | A challenge to a member, or the accepter of an open challenge, reserves Player 2 for that Matrix id. Verified with scripted joiners: an earlier joiner asking to play was made a spectator, the named member got Player 2 |
+| Host-chosen watch seats | Lobby picker 0-6, remembered per browser; room capacity follows it (a joiner beyond it gets "Room full") |
+| Game file generator | `romset.py add DAT SET` writes a complete game file; it reproduces the three hand-checked games |
+| Steam pad renumbering | Remembered controller-to-player choice survives Steam renaming "pad 2" to "pad 0" (verified with simulated pads) |
+
 ## Next
 
 | Task | Size | Notes |
 |---|---|---|
 | Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3 and the 60 fps stream on a home uplink. Element's widget iframe sandbox includes `allow-popups allow-popups-to-escape-sandbox`, so pop-out should work there |
 | More games | S each | One JSON file per FBNeo arcade game: `romset.py manifest`, buttons, a new `netplayId` |
-| Instant rematch | S | Capture a save state at the title screen on first boot and load it instead of restarting; skips the ~10 s board boot. The save-state shim makes this possible |
-| Spectator cost control | S | Each spectator is one more video encode on the host. Show the host how many are watching (done) and let them close spectator seats |
-| Assign P2 by Matrix identity | S | In the widget, the challenge already names the opponent; pass it into the roster so only that member can take P2 |
 
 ## CPS-3 in WebAssembly: numbers and risks
 

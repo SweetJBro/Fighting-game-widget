@@ -19,9 +19,9 @@ Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core in WebA
 
 ## Rematch and spectators
 
-* **Rematch.** Once both players are in, the host has a Rematch button that restarts the game in place, and the opponent has Ask for rematch, which shows the host a prompt. Room, connection and stream stay up; the CPS-3 board takes several seconds to reboot to the title. Insert coin and press Start as usual.
-* **Spectators.** Each match has `MAX_SPECTATORS` watch seats (default 2). Watch from a **Watch** button in the open-matches list, from **Live matches** in the Matrix widget (accepted challenges between other members), from the host's **Watch link** button, or from the Fluxer bot's watch link. Spectators get the host's stream and their inputs are ignored. Each one costs the host another video encode and upload.
-* **Who is Player 2.** The host decides: the first joiner who asked to play gets Player 2 and everyone else watches, even if a spectator connected first. Someone who joins a match that already has an opponent is told they are watching.
+* **Rematch.** Once both players are in, the host has a Rematch button and the opponent has Ask for rematch, which shows the host a prompt. Room, connection and stream stay up. The widget saves the board's state at the first coin of the session, when the game is idle on its title or attract screen, so a rematch returns there instantly instead of rebooting the board; if no coin has gone in yet, it falls back to a reboot. Insert coin and press Start as usual. In a local match the same button is Restart.
+* **Spectators.** The host picks how many watch seats their matches have (0-6, **Watch seats** in the lobby, remembered per browser; the server default is `MAX_SPECTATORS`, 2). Watch from a **Watch** button in the open-matches list, from **Live matches** in the Matrix widget (accepted challenges between other members), from the host's **Watch link** button, or from the Fluxer bot's watch link. Spectators get the host's stream and their inputs are ignored. Each one costs the host another video encode and upload.
+* **Who is Player 2.** The host decides. In the Matrix widget, a challenge to a named member, or an open challenge once someone accepts it, reserves Player 2 for that member's Matrix id; anyone else who joins watches. This prevents mix-ups, not impostors, since the id is what the joiner's widget reports. Otherwise the first joiner who asked to play gets Player 2, even if a spectator connected first. Someone who joins a match that already has an opponent is told they are watching.
 * **Save states.** EmulatorJS's own save and load paths work again; the published fbneo core lacks the export current EmulatorJS calls, so the bridge rebuilds it from the core's older one.
 
 ## Games
@@ -34,7 +34,13 @@ Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core in WebA
 
 Pick the game in the top bar. Each game has its own stored ROM, its own room namespace on the netplay server (a 3rd Strike lobby never lists a KOF room), its own buttons and its own pinned core options. Matrix challenges carry the game, so the widget shows each challenge's game and asks for the right ROM before accepting. Links carry it as `?game=<id>`; aliases such as `3s`, `st` and `kof` work too.
 
-Each game is one data file, `web/games/<id>.json`, listed in `web/games/index.json`; the format is in [docs/game-adapter.d.ts](docs/game-adapter.d.ts). Adding another FBNeo arcade game needs no code: generate the file list from FBNeo's DAT, add buttons and a room id, and list it.
+Each game is one data file, `web/games/<id>.json`, listed in `web/games/index.json`; the format is in [docs/game-adapter.d.ts](docs/game-adapter.d.ts). Adding another FBNeo arcade game needs no code:
+
+```bash
+python3 scripts/romset.py add "FinalBurn Neo (ClrMame Pro XML, Arcade only).dat" garou --short Garou --aliases garou,motw
+```
+
+`add` writes the game file with the DAT's file list (and BIOS), the verified Capcom-style or Neo Geo button layout, the pinned core options and the next free room id, then lists it. Check the names and any region DIP switch, build the zip with `romset.py merge` or `verify`, and boot it. The DAT is `dats/FinalBurn Neo (ClrMame Pro XML, Arcade only).dat` in the libretro/FBNeo repository.
 
 ## ROMs
 

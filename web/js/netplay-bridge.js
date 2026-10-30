@@ -21,7 +21,11 @@ TSL.Netplay = (() => {
   // single authority: the first present joiner who wants to play becomes Player 2,
   // everyone else watches. The host remaps that peer's inputs to player 1 and
   // drops everyone else's, so a spectator who connects first can never steal P2.
-  const intents = {};            // host: userid -> { intent, name }
+  const intents = {};            // host: userid -> { intent, name, matrixId }
+  // Matrix: the member the challenge named (or who accepted an open one). When
+  // set, only a joiner announcing that Matrix id can become Player 2. The id is
+  // what that player's widget reports, so this stops mix-ups, not impostors.
+  let expectedGuest = null;
   let roster = null;             // everyone: { host, guest, guestName, hostName, spectators: [names] }
   let lastRosterJson = "";
 
@@ -110,6 +114,20 @@ TSL.Netplay = (() => {
   const queue = [];              // [{ at, player, index, value }]
   let rawSimulate = null;        // core's own simulate_input
   let tickRaf = 0;
+  // Instant rematch: the board's state captured just before the first coin of
+  // the session, i.e. idle on its title/attract screen with no credits. Loading
+  // it skips the multi-second board reboot a restart costs (CPS-3: black screen,
+  // region warning, intro).
+  let titleState = null;
+  let titleStateTried = false;
+  function captureTitleState() {
+    if (titleStateTried) return;
+    titleStateTried = true;
+    try {
+      const st = emu().gameManager.getState();
+      if (st && st.length) titleState = st;
+    } catch (_) { /* rematch falls back to a restart */ }
+  }
 
   function readDelay() {
     let v = null;
@@ -130,6 +148,9 @@ TSL.Netplay = (() => {
     gm.functions.simulateInput = (player, index, value) => {
       const n = np();
       const hosting = e.isNetplay && n && n.owner;
+      // RetroPad 2 = SELECT = coin, from any player (guest coins arrive here too).
+      // Only the host and local play run the real game, so only they snapshot.
+      if (index === 2 && value && !titleStateTried && (hosting || !e.isNetplay)) captureTitleState();
       if (hosting && player === 0 && inputDelay > 0) {
         frame = gm.getFrameNum();
         // Never let a later event overtake an earlier one (delay lowered mid-match).
@@ -303,7 +324,8 @@ TSL.Netplay = (() => {
   }
 
   function maxSpectators() {
-    const v = Number(TSL.config && TSL.config.maxSpectators);
+    const chosen = opts && Number.isFinite(Number(opts.maxSpectators)) && opts.maxSpectators !== null ? Number(opts.maxSpectators) : NaN;
+    const v = Number.isFinite(chosen) ? chosen : Number(TSL.config && TSL.config.maxSpectators);
     return Number.isFinite(v) ? Math.max(0, Math.min(6, Math.round(v))) : 2;
   }
 
@@ -322,11 +344,11 @@ TSL.Netplay = (() => {
     const n = np();
     if (!n) return;
     if (n.owner) {
-      if (m.hello && m.hello.userid) { intents[m.hello.userid] = { intent: m.hello.intent, name: m.hello.name }; updateRoster(); }
+      if (m.hello && m.hello.userid) { intents[m.hello.userid] = { intent: m.hello.intent, name: m.hello.name, matrixId: m.hello.matrixId || null }; updateRoster(); }
       if (m.rematch === "request" && opts.onRematchRequest) opts.onRematchRequest(m.name || "Your opponent");
     } else {
       if (m.roster) roster = m.roster;
-      if (m.rematch === "done" && opts.onRematchDone) opts.onRematchDone();
+      if (m.rematch === "done" && opts.onRematchDone) opts.onRematchDone(m.how);
     }
   }
 
@@ -337,8 +359,13 @@ TSL.Netplay = (() => {
     const present = Object.values(n.players || {}).filter((p) => p.userid !== n.playerID);
     const ids = present.map((p) => p.userid);
     let guest = roster && ids.includes(roster.guest) ? roster.guest : null;
+    if (guest && expectedGuest && intents[guest] && intents[guest].matrixId !== expectedGuest) guest = null;
     if (!guest) {
-      const first = present.find((p) => intents[p.userid] && intents[p.userid].intent === "guest");
+      const first = present.find((p) => {
+        const it = intents[p.userid];
+        if (!it || it.intent !== "guest") return false;
+        return !expectedGuest || it.matrixId === expectedGuest;
+      });
       guest = first ? first.userid : null;
     }
     const nameOf = (id) => {
@@ -375,7 +402,7 @@ TSL.Netplay = (() => {
       const n = np();
       if (!n || !emu() || !emu().isNetplay) return;
       if (n.owner) updateRoster(true);
-      else sendTsl({ hello: { userid: n.playerID, intent: opts.role === "host" ? "guest" : opts.role, name: opts.name } });
+      else sendTsl({ hello: { userid: n.playerID, intent: opts.role === "host" ? "guest" : opts.role, name: opts.name, matrixId: opts.matrixId || null } });
     }, 2000);
     statusTimer = setInterval(() => {
       const e = emu(), n = np();
@@ -454,19 +481,27 @@ TSL.Netplay = (() => {
       return inputDelay;
     },
     /** Host: restart the game for a rematch, keeping room, peers and stream. */
+    /** Host or local: back to the title screen. Returns "instant", "reboot" or false. */
     rematch() {
       const e = emu(), n = np();
       if (!e || !e.gameManager) return false;
-      if (opts.role === "local") { e.gameManager.restart(); return true; }
-      if (!n || !n.owner) return false;
+      if (opts.role !== "local" && (!n || !n.owner)) return false;
       queue.length = 0;
-      e.gameManager.restart();
-      sendTsl({ rematch: "done" });
-      return true;
+      let how = "reboot";
+      if (titleState) {
+        try { e.gameManager.loadState(titleState); how = "instant"; } catch (_) { how = "reboot"; }
+      }
+      if (how === "reboot") e.gameManager.restart();
+      if (opts.role !== "local") sendTsl({ rematch: "done", how });
+      return how;
     },
+    /** For tests: whether a title-screen state has been captured. */
+    hasTitleState() { return !!titleState; },
     /** Guest: ask the host for a rematch. */
     requestRematch() { sendTsl({ rematch: "request", name: opts && opts.name }); },
     getRoster() { return roster; },
+    /** Host: only this Matrix id may take Player 2 (null = first joiner who asks to play). */
+    setExpectedGuest(id) { expectedGuest = id || null; if (roster && roster.guest && intents[roster.guest] && intents[roster.guest].matrixId !== expectedGuest && expectedGuest) roster.guest = null; updateRoster(true); },
     /** Live controllers: [{ index, id, player (-1 = none), standard }]. */
     pads,
     /** Make controller `index` drive `player` (0-based; -1 = none). Remembered by controller name. */
@@ -475,6 +510,7 @@ TSL.Netplay = (() => {
                 onStatus, onStats, onRematchRequest(name), onRematchDone() } */
     start(o) {
       opts = o;
+      expectedGuest = o.expectedGuest || null;
       inputDelay = readDelay();   // config.json and the game file have loaded by now
       configureEJS();
       report("loading");

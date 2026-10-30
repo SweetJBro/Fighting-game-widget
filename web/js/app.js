@@ -69,7 +69,7 @@
     try { v = localStorage.getItem(POPOUT_KEY); } catch (_) {}
     return v === null ? inIframe : v === "1";   // default on inside a chat iframe
   }
-  function popoutUrl({ code, role, sid }) {
+  function popoutUrl({ code, role, sid, expectedGuest }) {
     const u = new URL(cfg.publicUrl, location.href);
     u.search = "";
     u.searchParams.set("match", code);
@@ -77,6 +77,9 @@
     if (sid) u.searchParams.set("sid", sid);
     u.searchParams.set("name", myName());
     u.searchParams.set("game", state.game.id);
+    if (state.mode === "matrix" && state.myId) u.searchParams.set("mxid", state.myId);
+    if (expectedGuest) u.searchParams.set("expect", expectedGuest);
+    if (role === "host") u.searchParams.set("seats", String(seats()));
     u.searchParams.set("autostart", "1");
     u.searchParams.set("isolate", "1");
     return u.toString();
@@ -90,6 +93,16 @@
     n.classList.remove("hidden");
     return true;
   }
+  const SEATS_KEY = "tsl.seats";
+  function seats() {
+    if (params.get("seats") !== null && isolatedTab) return Math.max(0, Math.min(6, Number(params.get("seats")) || 0));
+    let v = null;
+    try { v = localStorage.getItem(SEATS_KEY); } catch (_) {}
+    const d = v === null ? (cfg.maxSpectators ?? 2) : Number(v);
+    return Math.max(0, Math.min(6, Number.isFinite(d) ? d : 2));
+  }
+  $("seats").value = String(seats());
+  $("seats").addEventListener("change", (e) => { try { localStorage.setItem(SEATS_KEY, e.target.value); } catch (_) {} });
   $("popout-pref").checked = popoutPref();
   $("popout-pref").addEventListener("change", (e) => { try { localStorage.setItem(POPOUT_KEY, e.target.checked ? "1" : "0"); } catch (_) {} });
   if (isolatedTab) $("popout-row").classList.add("hidden");
@@ -246,6 +259,7 @@
     if (!gameReady()) { show("screen-rom"); return; }
     show("screen-lobby");
     $("btn-local").classList.toggle("hidden", state.mode === "direct");
+    $("seats-wrap").classList.toggle("hidden", state.mode === "direct" && params.get("role") !== "host");
     $("btn-local").onclick = () => startMatch({ code: "LOCAL", role: "local" });
     if (state.mode === "direct") return startDirect();
     if (state.mode === "matrix") return matrixLobby();
@@ -321,9 +335,10 @@
     $("join-row").classList.add("hidden");
     $("list-title").parentElement.classList.add("hidden");
     $("btn-host").textContent = role === "spectator" ? "Watch" : "Fight";
-    $("btn-host").onclick = () => startMatch({ code, role, sid: params.get("sid") || undefined });
+    const m = { code, role, sid: params.get("sid") || undefined, expectedGuest: params.get("expect") || null };
+    $("btn-host").onclick = () => startMatch(m);
     // Pop-out tabs arrive with autostart=1: the click already happened in the opener.
-    if (params.get("autostart") === "1") startMatch({ code, role, sid: params.get("sid") || undefined });
+    if (params.get("autostart") === "1") startMatch(m);
   }
 
   // Matrix widget: members + challenge events inside the room.
@@ -368,7 +383,11 @@
     } else if (c.kind === "accept" && c.id) {
       const ch = state.seenChallenges.get(c.id);
       if (ch) { ch.taken = true; ch.by = c.by || { id: sender, name: sender }; ch.takenTs = ts; }
-      if (ch && state.challengeId === c.id && c.by) $("match-opponent").textContent = "vs " + c.by.name;
+      if (ch && state.challengeId === c.id && c.by) {
+        $("match-opponent").textContent = "vs " + c.by.name;
+        // Open challenge: whoever accepted is the one allowed to be Player 2.
+        if (state.current && state.current.role === "host" && !ch.to) TSL.Netplay.setExpectedGuest(c.by.id);
+      }
     } else if (c.kind === "cancel" && c.id) {
       state.seenChallenges.delete(c.id);
     }
@@ -437,7 +456,7 @@
       await state.matrix.send({ kind: "challenge", id, code, game: state.game.id, from: { id: state.myId, name: myName(), ping: state.serverPing }, to: toId });
     } catch (e) { return toast("Could not post challenge: " + (e.message || e), true); }
     state.challengeId = id;
-    startMatch({ code, role: "host" });
+    startMatch({ code, role: "host", expectedGuest: toId || null });
   }
 
   async function acceptChallenge(c) {
@@ -451,7 +470,7 @@
   }
 
   /* ---------- Match ---------- */
-  async function startMatch({ code, role, sid }) {
+  async function startMatch({ code, role, sid, expectedGuest }) {
     state.name = myName(); localStorage.setItem("tsl.name", state.name);
     // Fail fast with a clear message instead of a silent socket.io retry loop.
     if (role !== "local" && state.serverPing === null) await refreshPing();
@@ -459,9 +478,9 @@
       toast("Can't reach the netplay server at " + cfg.netplayUrl + ". Check that it is running and that NETPLAY_URL points at it.", true);
       return;
     }
-    if (role !== "local" && popoutPref() && openPopout({ code, role, sid })) return;
+    if (role !== "local" && popoutPref() && openPopout({ code, role, sid, expectedGuest })) return;
     clearInterval(state.pollTimer);
-    state.current = { code, role, sid, game: state.game.id };
+    state.current = { code, role, sid, game: state.game.id, expectedGuest: expectedGuest || null };
     sel.disabled = true;
     state.connected = false;
     $("btn-popout").classList.toggle("hidden", isolatedTab);
@@ -479,6 +498,9 @@
     setStatus("loading emulator…");
     TSL.Netplay.start({
       game: state.game, rom: state.rom, bios: state.bios, code, role, sid, name: state.name,
+      matrixId: state.mode === "matrix" ? state.myId : (params.get("mxid") || null),
+      expectedGuest: expectedGuest || null,
+      maxSpectators: role === "host" ? seats() : null,
       onStatus: (s) => {
         if (s.state === "loading") setStatus("loading emulator…");
         else if (s.state === "hosting") setStatus("opening room…");
@@ -516,7 +538,7 @@
         $("rematch-ask-text").textContent = who + " wants a rematch. This restarts the game for everyone.";
         $("rematch-ask").classList.remove("hidden");
       },
-      onRematchDone: () => toast("The host restarted the game. Insert coin and press Start.")
+      onRematchDone: (how) => toast(how === "instant" ? "Rematch: back at the title screen. Insert coin and press Start." : "The host restarted the game. Insert coin and press Start.")
     });
   }
 
@@ -558,14 +580,16 @@
   });
   $("btn-rematch").addEventListener("click", () => {
     if (state.current && (state.current.role === "host" || state.current.role === "local")) {
-      if (TSL.Netplay.rematch()) { toast("Game restarted. Insert coin and press Start."); $("rematch-ask").classList.add("hidden"); }
+      const how = TSL.Netplay.rematch();
+      if (how) { toast(how === "instant" ? "Back at the title screen. Insert coin and press Start." : "Game restarted. Insert coin and press Start."); $("rematch-ask").classList.add("hidden"); }
     } else {
       TSL.Netplay.requestRematch();
       toast("Asked the host for a rematch.");
     }
   });
   $("btn-rematch-accept").addEventListener("click", () => {
-    if (TSL.Netplay.rematch()) toast("Game restarted. Insert coin and press Start.");
+    const how = TSL.Netplay.rematch();
+    if (how) toast(how === "instant" ? "Back at the title screen. Insert coin and press Start." : "Game restarted. Insert coin and press Start.");
     $("rematch-ask").classList.add("hidden");
   });
   $("btn-rematch-dismiss").addEventListener("click", () => $("rematch-ask").classList.add("hidden"));
