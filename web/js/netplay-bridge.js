@@ -56,6 +56,14 @@ TSL.Netplay = (() => {
   const PAD_KEY = "tsl.padPlayers";
   function padPrefs() { try { return JSON.parse(localStorage.getItem(PAD_KEY) || "{}"); } catch (_) { return {}; } }
   function selectionValue(gp) { return gp.id + "_" + gp.index; }
+  // Steam Input renumbers its virtual pads ("Microsoft X-Box 360 pad 2" today,
+  // "pad 0" after a reconnect), so fall back to the name without that number.
+  const looseId = (id) => id.replace(/\bpad \d+\b/i, "pad");
+  function prefFor(prefs, id) {
+    if (typeof prefs[id] === "number") return prefs[id];
+    const hit = Object.keys(prefs).find((k) => looseId(k) === looseId(id));
+    return hit === undefined ? undefined : prefs[hit];
+  }
   function livePads() { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean); }
   function applyPadPrefs() {
     const e = emu();
@@ -63,7 +71,7 @@ TSL.Netplay = (() => {
     if (!sel) return;
     const prefs = padPrefs();
     for (const gp of livePads()) {
-      const want = prefs[gp.id];
+      const want = prefFor(prefs, gp.id);
       if (typeof want !== "number" || want < 0 || want >= sel.length) continue;
       const v = selectionValue(gp);
       if (sel[want] === v) continue;
@@ -81,7 +89,9 @@ TSL.Netplay = (() => {
     if (!gp) return;
     const prefs = padPrefs();
     // One controller per player: whoever held this player slot gives it up.
-    for (const [id, p] of Object.entries(prefs)) if (p === player && id !== gp.id) delete prefs[id];
+    for (const [id, p] of Object.entries(prefs)) {
+      if ((p === player && id !== gp.id) || (id !== gp.id && looseId(id) === looseId(gp.id))) delete prefs[id];
+    }
     if (player < 0) delete prefs[gp.id]; else prefs[gp.id] = player;
     try { localStorage.setItem(PAD_KEY, JSON.stringify(prefs)); } catch (_) {}
     const e = emu();

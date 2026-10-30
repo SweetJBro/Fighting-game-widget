@@ -152,6 +152,7 @@ The pad layout is the usual one for Xbox-style controllers and for arcade sticks
 * **Controllers.** The top bar counts the controllers the page sees. Browsers reveal a controller only after one of its buttons is pressed while the page is open, so press any button once.
 * **Netplay.** Every controller on your machine drives your own player; the guest's controller reaches the host's game the same way as their keyboard.
 * **Local match.** The lobby's **Local match** runs the game with no room: two controllers on one machine are Player 1 and Player 2. The controller panel picks which controller is which, and the choice is remembered by controller name. That matters with Steam Input, which adds virtual pads that would otherwise take the first slots.
+* **Steam Controller and other Steam Input pads.** Steam presents these as virtual Xbox 360 pads, and outside a Steam game it applies its Desktop Layout, which turns the controller into a mouse and keyboard, so the page sees no controller input. Set Steam's Desktop Layout to the Gamepad template (Settings > Controller), or add your browser as a non-Steam game with a Gamepad layout and start it from Steam. Steam renumbers its virtual pads, so the remembered player choice ignores the pad number.
 * **Remapping.** Buttons can be rebound in EmulatorJS's Control Settings (the gamepad icon). Remaps are saved per game in this browser and reset automatically if a game's default layout changes.
 
 ## Performance
