@@ -228,7 +228,8 @@
   "coreOpts": {
     "fbneo-dipswitch-sfiii3nr1-Region": "Japan",
     "fbneo-cpu-speed-adjust": "100%",
-    "fbneo-frameskip-type": "disabled"
+    "fbneo-frameskip-type": "disabled",
+    "fbneo-diagnostic-input": "None"
   },
   "input": {
     "1": {

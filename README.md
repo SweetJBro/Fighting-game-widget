@@ -59,7 +59,7 @@ python3 scripts/romset.py bios kof2002 $FC/neogeo.zip
 
 ### Same versions as Fightcade
 
-Fightcade's 3rd Strike is `sfiii3nr1` with Region = Japan and CPU = 100% (its `config/fcadefbneo/games/sfiii3nr1.ini`); the lobby pins the same through each game's `coreOpts`. Super Turbo is `ssf2xjr1` and KOF 2002 is `kof2002`, the sets Fightcade's channels use.
+Fightcade's 3rd Strike is `sfiii3nr1` with Region = Japan and CPU = 100% (its `config/fcadefbneo/games/sfiii3nr1.ini`); the lobby pins the same through each game's `coreOpts`. Every game also turns off FBNeo's "hold Start to open the test menu" shortcut, so holding Start mid-match cannot drop the board into its operator menu. Super Turbo is `ssf2xjr1` and KOF 2002 is `kof2002`, the sets Fightcade's channels use.
 
 ## Layout
 
@@ -147,7 +147,7 @@ The bot discovers the API and gateway from `https://fluxer.app/.well-known/fluxe
 | Kicks | J / K / L (LK / MK / HK) | J = B (LK), K = D (HK) |
 | Start / Coin | Enter / Space | Enter / Space |
 
-The match bar's **Controls** button shows the current game's keys. Gamepads work through EmulatorJS's gamepad support. Host is P1, guest is P2; the guest's own P1 bindings are sent to the host and applied to P2.
+Every button was checked in each board's own input test (the CPS-3 and CPS-2 test menus and the Neo Geo MVS I/O check), key by key. The match bar's **Controls** button shows the current game's keys. Gamepads work through EmulatorJS's gamepad support. Host is P1, guest is P2; the guest's own P1 bindings are sent to the host and applied to P2.
 
 ## Performance
 
@@ -161,4 +161,4 @@ Measured on this machine in the desktop app's browser pane: the host runs CPS-3 
 * Fluxer's mention syntax in message content is assumed to be Discord-style `<@id>`; that part of the docs was not explicit.
 * `/config.json` hands the ICE server list, including any static TURN username and credential, to every visitor. That is inherent to browser WebRTC; use time-limited TURN credentials if the TURN server matters.
 * Each game accepts exactly one set (the Fightcade one). Other revisions, such as `sfiii3n`, would need their own game file.
-* The KOF 2002 button layout follows FBNeo's default Neo Geo mapping; it has not been checked button by button in game.
+* EmulatorJS does not remember its own settings (such as volume) between visits: saving them would let a stale copy override each game's pinned options and buttons.

@@ -32,6 +32,13 @@ TSL.Games = (() => {
   /** EmulatorJS controller table (player 1) built from the game's input map. */
   function controls(game) {
     const p1 = {};
+    // EmulatorJS MERGES this table into its own defaults, which bind the analog
+    // sticks (16-23) and L2/R2/L3/R3 (12-15) to keyboard keys such as i/j/k/l.
+    // Those keys would fire a stick alongside our buttons, so clear the KEYBOARD
+    // key of every entry the game does not use. Only `value` is cleared: the
+    // merge keeps the default gamepad binding (`value2`), so sticks still work on
+    // a pad. 24+ are EmulatorJS hotkeys and stay as they are.
+    for (let i = 0; i < 24; i++) p1[i] = { value: "" };
     for (const [idx, b] of Object.entries(game.input)) p1[idx] = { value: b.key, value2: b.pad };
     // EmulatorJS replaces its whole table with this object and then touches
     // players 2-4, so they must exist even when empty.

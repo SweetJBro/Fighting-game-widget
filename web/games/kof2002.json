@@ -289,7 +289,8 @@
   },
   "coreOpts": {
     "fbneo-cpu-speed-adjust": "100%",
-    "fbneo-frameskip-type": "disabled"
+    "fbneo-frameskip-type": "disabled",
+    "fbneo-diagnostic-input": "None"
   },
   "input": {
     "0": {

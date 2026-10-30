@@ -119,9 +119,16 @@ TSL.Netplay = (() => {
       quickLoad: false, cacheManager: false, exitEmulation: false, screenRecord: false,
       saveSavFiles: false, loadSavFiles: false
     };
-    // Pinned per game (web/games/<id>.json coreOpts) so every player runs
-    // identical settings, e.g. 3rd Strike Region = Japan as on Fightcade.
+    // Pinned per game (web/games/<id>.json coreOpts), e.g. 3rd Strike Region =
+    // Japan as on Fightcade. EJS_defaultOptions is what the core actually starts
+    // with; EJS_coreOpts only changes the defaults its settings menu displays.
+    window.EJS_defaultOptions = Object.assign({}, game.coreOpts);
     window.EJS_coreOpts = Object.assign({}, game.coreOpts);
+    // EmulatorJS otherwise saves its settings AND button table per game in
+    // localStorage once a player touches its menu, and those then override the
+    // game file on every later visit. Our own preferences (name, delay, game)
+    // live under tsl.* keys and are unaffected; ROMs stay cached in IndexedDB.
+    window.EJS_disableLocalStorage = true;
     // Threaded core (fbneo-thread-*.data) needs SharedArrayBuffer, which only
     // exists in a cross-origin isolated page: the pop-out tab, never the Matrix
     // iframe. server/serve.js sends COOP/COEP for ?isolate=1. Measured on CPS-3:

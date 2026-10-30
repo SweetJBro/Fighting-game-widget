@@ -36,6 +36,8 @@ Findings along the way:
 * **`Module.postMainLoop` never fires** in current EmulatorJS, so its own netplay frame counter stays at 0. Our input delay polls `get_current_frame_count` instead.
 * **EmulatorJS numbers netplay players by join order**, so without the host-side remap a spectator could take Player 2.
 * **Hidden tabs stop entirely.** A background or hidden tab runs no animation frames, so the host's game freezes. The performance banner and pop-out exist for this.
+* **`EJS_coreOpts` does not set core options.** It only changes the defaults EmulatorJS's settings menu shows; `EJS_defaultOptions` is what reaches the core.
+* **EmulatorJS merges button tables.** Its default keyboard bindings for the analog sticks (i/j/k/l) survive unless explicitly cleared.
 * **A rematch reboots the CPS-3 board**, which takes several seconds of black screen and the region warning before the title.
 
 ### Phase 2: multiple games (`phase2-multigame`)
@@ -51,13 +53,16 @@ Findings along the way:
 | Matrix `game` field | Challenges and accepts carry it (missing = 3rd Strike); widget tags each challenge and live match; accepting a game you lack opens the ROM screen first and only then sends the accept |
 | Fluxer `!fight <game> @rival` | Game ids and aliases; game list read from the lobby |
 | Two more games | Super Street Fighter II Turbo (`ssf2xjr1`, CPS-2) and The King of Fighters 2002 (`kof2002`, Neo Geo + `neogeo.zip`). Both boot at 60 fps; KOF host and guest connected in their own namespace |
+| Buttons verified on the boards | Every button of all three games checked in the board's own input test (CPS-3 and CPS-2 test menus, Neo Geo MVS I/O check), and every key checked to fire exactly one input |
+| Core options actually applied | They were only reaching the settings menu (`EJS_coreOpts`); now passed as `EJS_defaultOptions`, which the core starts with. EmulatorJS's own settings storage is off so a saved copy cannot override them |
+| No test menu mid-match | FBNeo's default "hold Start" shortcut to the operator menu is off for every game |
+| Stray stick inputs fixed | EmulatorJS merges our button table into its defaults, which bound i/j/k/l to the right analog stick; those keyboard bindings are now cleared (gamepad sticks kept) |
 
 ## Next
 
 | Task | Size | Notes |
 |---|---|---|
 | Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3 and the 60 fps stream on a home uplink. Element's widget iframe sandbox includes `allow-popups allow-popups-to-escape-sandbox`, so pop-out should work there |
-| Check KOF 2002 buttons in game | S | The A/B/C/D layout follows FBNeo's default Neo Geo mapping from its source; confirm each button in the game's own test menu |
 | More games | S each | One JSON file per FBNeo arcade game: `romset.py manifest`, buttons, a new `netplayId` |
 | Instant rematch | S | Capture a save state at the title screen on first boot and load it instead of restarting; skips the ~10 s board boot. The save-state shim makes this possible |
 | Gamepad remapping UI | M | On top of EmulatorJS's control settings, saved per game per browser |
