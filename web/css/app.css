@@ -186,3 +186,12 @@ input[readonly] { color: var(--muted); }
 h1:focus, h2:focus, .role-badge:focus { outline: none; }
 .storage-line { margin-top: 10px; }
 #seats-hint { margin-left: 6px; }
+
+.check-inline { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.check-inline input { margin: 0; }
+.privacy-note { margin-top: 12px; font-size: 13px; }
+/* Quality is never colour alone: the dot's shape changes with the grade. */
+.netstats.q-good .dot::after { content: ""; }
+.netstats.q-ok .dot { border-radius: 2px; }
+.netstats.q-poor .dot { border-radius: 0; transform: rotate(45deg); }
+.netstats.q-unknown .dot { opacity: 0.4; }

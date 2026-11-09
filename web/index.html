@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting Game Widget</title>
-  <link rel="stylesheet" href="css/app.css?v=32">
+  <link rel="stylesheet" href="css/app.css?v=33">
 </head>
 <body>
   <header class="topbar">
@@ -77,8 +77,14 @@
               <select id="seats"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
               <span id="seats-hint" class="hint"></span>
             </label>
+            <label id="quality-wrap" class="delay" title="Stream quality for people who watch (your opponent always gets the full stream). Reduced and minimal cut the upload each watcher costs you.">
+              Watch quality
+              <select id="spectator-quality"><option value="full">full</option><option value="reduced">reduced</option><option value="minimal">minimal</option></select>
+            </label>
             <button id="btn-local" class="btn" title="Two players on this machine, one controller each. No netplay.">Local match</button>
           </div>
+
+          <p class="hint privacy-note">Netplay connects players directly: the other player (and a relay server, when one is used) sees your IP address, as in any peer-to-peer game. Game files never leave the host's browser.</p>
 
           <label id="popout-row" class="check">
             <input id="popout-pref" type="checkbox">
@@ -131,7 +137,7 @@
           <span id="match-status" class="status">starting…</span>
         </div>
         <div class="matchbar-right">
-          <span id="net-stats" class="netstats" title="Connection to your opponent and emulator speed"><span class="dot"></span><span class="txt">no link yet</span></span>
+          <span id="net-stats" class="netstats" title="Connection to your opponent and emulator speed" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="txt">no link yet</span></span>
           <span id="match-opponent" class="hint"></span>
           <label id="delay-wrap" class="delay hidden" title="Delays YOUR inputs by this many frames so the match feels the same on both ends. The guest's lag does not change. 0 = off.">
             Input delay
@@ -139,12 +145,14 @@
               <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
               <option>5</option><option>6</option><option>7</option><option>8</option>
             </select>
-            <span id="delay-hint" class="delay-hint" title="Estimated input lag: yours is the delay in frames; your opponent's is the network round trip plus video encoding and decoding."></span>
+            <span id="delay-hint" class="delay-hint" title="Estimated input lag: yours is the delay in frames; your opponent's is the network round trip plus video encoding and decoding. 'rec.' is the suggested delay for the current ping: half of what your opponent feels."></span>
+            <label class="check-inline" title="Let the page move the delay one frame at a time toward the recommendation while the ping settles. Off by default; you can still pick a value by hand."><input id="delay-auto" type="checkbox"> auto</label>
           </label>
           <button id="btn-rematch" class="btn btn-sm hidden">Rematch</button>
           <button id="btn-watch-link" class="btn btn-ghost btn-sm hidden" title="Copy a link that lets others watch this match">Watch link</button>
           <button id="btn-popout" class="btn btn-ghost btn-sm hidden" title="Restart this match in its own full-size tab, outside the chat">Pop out</button>
           <button id="btn-controls" class="btn btn-ghost btn-sm">Controls</button>
+          <button id="btn-debug" class="btn btn-ghost btn-sm" title="Copy a report for a bug: versions, game, role, ping samples, route, controllers. No passwords, no ROM data.">Debug</button>
           <button id="btn-leave" class="btn btn-danger btn-sm">Leave</button>
         </div>
       </div>
@@ -181,20 +189,26 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/zipcore.js?v=32"></script>
-  <script src="js/games.js?v=32"></script>
-  <script src="js/config.js?v=32"></script>
-  <script src="js/romstore.js?v=32"></script>
-  <script src="js/netplay-tuning.js?v=32"></script>
-  <script src="js/match-logic.js?v=32"></script>
-  <script src="js/pad-logic.js?v=32"></script>
-  <script src="js/guest-client.js?v=32"></script>
-  <script src="js/netplay-bridge.js?v=32"></script>
-  <script src="js/matrix-lobby.js?v=32"></script>
-  <script src="js/ui/rom-screen.js?v=32"></script>
-  <script src="js/ui/matrix-ui.js?v=32"></script>
-  <script src="js/ui/match-screen.js?v=32"></script>
-  <script src="js/ui/pads-panel.js?v=32"></script>
-  <script src="js/app.js?v=32"></script>
+  <script src="js/zipcore.js?v=33"></script>
+  <script src="js/games.js?v=33"></script>
+  <script src="js/config.js?v=33"></script>
+  <script src="js/romstore.js?v=33"></script>
+  <script src="js/netplay-tuning.js?v=33"></script>
+  <script src="js/match-logic.js?v=33"></script>
+  <script src="js/pad-logic.js?v=33"></script>
+  <script src="js/roster.js?v=33"></script>
+  <script src="js/tsl-messaging.js?v=33"></script>
+  <script src="js/ejs-adapter.js?v=33"></script>
+  <script src="js/ejs-setup.js?v=33"></script>
+  <script src="js/input-delay.js?v=33"></script>
+  <script src="js/controller-bridge.js?v=33"></script>
+  <script src="js/guest-client.js?v=33"></script>
+  <script src="js/netplay-bridge.js?v=33"></script>
+  <script src="js/matrix-lobby.js?v=33"></script>
+  <script src="js/ui/rom-screen.js?v=33"></script>
+  <script src="js/ui/matrix-ui.js?v=33"></script>
+  <script src="js/ui/match-screen.js?v=33"></script>
+  <script src="js/ui/pads-panel.js?v=33"></script>
+  <script src="js/app.js?v=33"></script>
 </body>
 </html>

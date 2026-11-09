@@ -124,6 +124,22 @@ Not done: the optional `netplay-bridge.js` split. The pad rules moved out into `
 | Ops | Health checks for web and netplay; status page warns when `PACKAGED_ROM=1`; CI caches the EmulatorJS pin and fails fast on schema and internals |
 | Docs | `CONTRIBUTING.md`: where things live, adding a game, bumping EmulatorJS, manual verification matrix |
 
+### Design-document pass (November 2026)
+
+| Task | Result |
+|---|---|
+| `netplay-bridge.js` split | 543 to 320 lines. New: `ejs-adapter.js` (every EmulatorJS internal, one place to fix on a pin bump), `ejs-setup.js`, `input-delay.js`, `roster.js`, `tsl-messaging.js`, `controller-bridge.js`. `roster.js` and `tsl-messaging.js` are pure and unit-tested with fake netplay objects |
+| Recommended and auto delay | "rec. N" next to the picker: half the guest's estimated lag in frames. **auto** (off by default) steps one frame at a time toward it after three agreeing pings, at most every 5 s, down as well as up; a single ping spike never moves it (tests) |
+| Spectator quality | Lobby **Watch quality** full / reduced / minimal caps bitrate and fps per spectator connection only (`TSL.Tuning.setPeerCaps`); the host bar shows the measured upload and watcher count; the seats hint uses the tier |
+| Hidden tab | Banner on return: "hidden for N s, the game froze meanwhile" |
+| Resilience | Guest asks the host to renegotiate after 5 s in `disconnected`, not only on `failed`; host-left message says to press Leave; ROM store survives blocked storage, damaged records and quota |
+| Debug report | **Debug** copies build, browser, game, role, last 15 samples, route, pads, peers, EmulatorJS errors; no credentials |
+| Security | `CSP_MODE` report / enforce / off (default report-only) with sources from the config; `nosniff`, referrer policy; pinned EmulatorJS cached a day; Matrix payloads validated (code format, name length, game id, cancel only by the challenger); direct-link codes sanitised; privacy note in the lobby |
+| Status | `/status.json` carries version, commit, the effective stream/delay/seats config, ICE URLs (no credentials), TURN yes/no, CSP mode; `status.html` shows it |
+| Tooling | `scripts/bump-ejs.sh` edits both pins, reinstalls, runs checks, prints the manual checklist. 53 tests |
+
+Skipped on purpose: a bigger "How to get the files" section (removed the day before as noise) and Playwright (the project has no dependencies; browser checks stay manual, see CONTRIBUTING).
+
 ## Next
 
 Roughly by impact over effort.
@@ -131,8 +147,8 @@ Roughly by impact over effort.
 | Task | Size | Notes |
 |---|---|---|
 | Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3 and the 60 fps stream on a home uplink; measure real guest lag against the in-page estimate. Element's widget iframe sandbox includes `allow-popups allow-popups-to-escape-sandbox`, so pop-out should work there. Also: strict NAT + TURN, several spectators, rematch with several concurrent joiners |
-| Split `netplay-bridge.js` further | M | Still ~520 lines: EmulatorJS lifecycle, pad remapping, rematch/save-state and the message hooks could each be a file. Needs a netplay retest, so do it with the two-machine test |
-| Performance mode | M | Drop stream resolution or fps when the host is under the threshold, if `setParameters` allows it without renegotiation |
+| Netplay retest after the bridge split | S | The split was verified with a local match in the browser (emulator boot, delay queue, pads) and unit tests; host + ROM-free guest + spectator + rematch still need the two-browser pass |
+| Performance mode | M | Drop stream resolution when the host is under the threshold (per-peer fps/bitrate caps exist now via `setPeerCaps`; resolution needs `scaleResolutionDownBy`) |
 | Accessibility | S | Full keyboard pass through lobby and match bar with visible focus everywhere; screen-reader labels on the match bar stats |
 | More games | S each | One JSON file per FBNeo arcade game: `romset.py add DAT SET`, then check buttons and region DIP |
 | Optional error reporting | S | Behind a flag: stack, game, browser, role, logged structured or posted to an endpoint |

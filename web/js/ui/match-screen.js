@@ -5,7 +5,8 @@ window.TSL = window.TSL || {};
 TSL.UI = TSL.UI || {};
 
 TSL.UI.matchScreen = function install(ctx) {
-  const { $, state, cfg, params, toast, show, myName, shareLink, cleanUrl, popoutPref, popoutUrl, openPopout, seats, inIframe, isolatedTab, sel } = ctx;
+  const { $, state, cfg, params, toast, show, myName, shareLink, cleanUrl, popoutPref, popoutUrl, openPopout, seats, spectatorQuality, inIframe, isolatedTab, sel } = ctx;
+  const history = [];   // last stats samples, for the debug report
   /* ---------- Match ---------- */
   async function startMatch({ code, role, sid, expectedGuest }) {
     state.name = myName(); localStorage.setItem("tsl.name", state.name);
@@ -23,7 +24,8 @@ TSL.UI.matchScreen = function install(ctx) {
     $("btn-popout").classList.toggle("hidden", isolatedTab);
     $("delay-wrap").classList.toggle("hidden", role !== "host");
     $("input-delay").value = String(TSL.Netplay.getInputDelay());
-    lastRtt = null; renderDelayHint();
+    $("delay-auto").checked = !!(TSL.Netplay.isAutoDelay && TSL.Netplay.isAutoDelay());
+    lastRtt = null; lastRecommended = null; renderDelayHint();
     show("screen-match");
     setRole(role);
     $("btn-rematch").classList.add("hidden");
@@ -39,6 +41,7 @@ TSL.UI.matchScreen = function install(ctx) {
       matrixId: state.mode === "matrix" ? state.myId : (params.get("mxid") || null),
       expectedGuest: expectedGuest || null,
       maxSpectators: role === "host" ? seats() : null,
+      spectatorQuality: role === "host" ? spectatorQuality() : null,
       onStatus: (s) => {
         if (s.state === "loading") setStatus("loading emulator…");
         else if (s.state === "hosting") setStatus("opening room…");
@@ -81,15 +84,22 @@ TSL.UI.matchScreen = function install(ctx) {
   }
 
   /** "~50 ms you · ~90 ms them": host delay in frames vs the guest's round trip plus a video frame each way. */
-  let lastRtt = null;
+  let lastRtt = null, lastRecommended = null;
   function renderDelayHint() {
     const el = $("delay-hint");
     if (!state.current || state.current.role !== "host") { el.textContent = ""; return; }
     const fps = (state.game.performance && state.game.performance.fps) || 60;
-    const mine = Math.round(TSL.Netplay.getInputDelay() * 1000 / fps);
-    const theirs = lastRtt === null ? null : Math.round(lastRtt + 2000 / fps);
-    el.textContent = "≈" + mine + " ms you" + (theirs === null ? "" : " · ≈" + theirs + " ms them");
+    const L = TSL.MatchLogic;
+    const mine = L.hostLagMs(TSL.Netplay.getInputDelay(), fps);
+    const theirs = L.guestLagMs(lastRtt, fps);
+    let text = "≈" + mine + " ms you" + (theirs === null ? "" : " · ≈" + theirs + " ms them");
+    if (lastRecommended !== null && lastRecommended !== TSL.Netplay.getInputDelay()) text += " · rec. " + lastRecommended;
+    el.textContent = text;
   }
+  $("delay-auto").addEventListener("change", (e) => {
+    TSL.Netplay.setAutoDelay(e.target.checked);
+    toast(e.target.checked ? "Auto delay on: moves one frame at a time toward the recommendation." : "Auto delay off.");
+  });
 
   /** The role badge is the one persistent "what am I" indicator; the tab title repeats it. */
   function setRole(role) {
@@ -119,9 +129,14 @@ TSL.UI.matchScreen = function install(ctx) {
 
   function renderStats(s) {
     lastRtt = s.link && s.link.rttMs !== null ? s.link.rttMs : null;
+    lastRecommended = s.recommendedDelay ?? null;
+    if (typeof s.inputDelay === "number" && String(s.inputDelay) !== $("input-delay").value) $("input-delay").value = String(s.inputDelay);   // auto mode moved it
+    history.push({ t: Date.now(), rtt: lastRtt, route: s.link && s.link.route, fps: s.emuFps, streamFps: s.link && s.link.streamFps, loss: s.link && s.link.lossPct, up: s.uploadMbps, delay: s.inputDelay });
+    if (history.length > 30) history.shift();
     renderDelayHint();
     const el = $("net-stats"), parts = [];
     if (s.role === "host" && s.emuFps !== null) parts.push(s.emuFps + " fps");
+    if (s.uploadMbps !== null && s.uploadMbps !== undefined) parts.push("↑ " + s.uploadMbps + " Mbps" + (s.spectators ? " · " + s.spectators + " watching" : ""));
     if (s.link) {
       if (s.link.rttMs !== null) parts.push("ping " + s.link.rttMs + " ms");
       if (s.link.streamFps !== null) parts.push("stream " + s.link.streamFps + " fps");
@@ -145,6 +160,11 @@ TSL.UI.matchScreen = function install(ctx) {
       if (s.hidden) msg += "This tab is in the background; keep it in front.";
       else if (inIframe && !isolatedTab) msg += "Use Pop out to run it in its own tab and keep that tab in front.";
       else msg += "Close other heavy tabs or apps; " + state.game.hardware + " emulation needs a fast CPU core.";
+    } else if (hiddenNotice) {
+      kind = "hiddenPause"; msg = hiddenNotice;
+    } else if (s.role === "host" && s.link && s.link.streamFps !== null && s.link.streamFps < 40 && s.spectators > 0) {
+      kind = "hostStream";
+      msg = "Your stream is leaving at " + s.link.streamFps + " fps with " + s.spectators + " watching. Lower Watch quality or watch seats in the lobby next time, or close uploads on your network.";
     } else if (s.role !== "host" && s.link && s.link.streamFps !== null && s.link.streamFps < 40) {
       kind = "guestFps";
       msg = "The host's video is arriving at " + s.link.streamFps + " fps" + (relay ? " through a relay server" : "") + ". Expect choppy motion. " +
@@ -193,6 +213,32 @@ TSL.UI.matchScreen = function install(ctx) {
     if (!w) { toast("Your browser blocked the new tab.", true); return; }
     location.href = cleanUrl();   // EmulatorJS cannot be torn down in place
   });
+  // Hidden tabs run no animation frames, so the host's game freezes. Say so when they come back.
+  let hiddenSince = null, hiddenNotice = "";
+  document.addEventListener("visibilitychange", () => {
+    if (!state.current || state.current.role === "spectator") return;
+    if (document.hidden) { hiddenSince = Date.now(); return; }
+    if (hiddenSince && Date.now() - hiddenSince > 2000 && (state.current.role === "host" || state.current.role === "local")) {
+      const secs = Math.round((Date.now() - hiddenSince) / 1000);
+      hiddenNotice = "This tab was hidden for " + secs + " s and the game froze meanwhile" + (inIframe && !isolatedTab ? ". Pop out to a tab you can keep in front." : ". Keep this tab in front.");
+      setTimeout(() => { hiddenNotice = ""; }, 15000);
+    }
+    hiddenSince = null;
+  });
+
+  $("btn-debug").addEventListener("click", async () => {
+    const build = (document.querySelector('script[src*="app.js?v="]') || { src: "" }).src.replace(/.*v=/, "") || "?";
+    const ice = (cfg.iceServers || []).map((s) => [].concat(s.urls || []).join(" ")).join("; ");
+    const info = {
+      build, time: new Date().toISOString(), ua: navigator.userAgent, page: location.pathname + location.search.replace(/(name|mxid)=[^&]*/g, "$1=…"),
+      mode: state.mode, inIframe, isolatedTab, game: state.game.id, netplayUrl: cfg.netplayUrl, ice, ejsDataPath: cfg.ejsDataPath,
+      serverPing: state.serverPing, samples: history.slice(-15), match: TSL.Netplay.debugInfo ? TSL.Netplay.debugInfo() : null
+    };
+    const text = "```json\n" + JSON.stringify(info, null, 1) + "\n```";
+    try { await navigator.clipboard.writeText(text); toast("Debug report copied. Paste it with your bug report."); }
+    catch (_) { prompt("Copy this debug report:", text); }
+  });
+
   function setStatus(text, cls) { const el = $("match-status"); el.textContent = text; el.className = "status" + (cls ? " " + cls : ""); }
 
   $("btn-leave").addEventListener("click", () => {

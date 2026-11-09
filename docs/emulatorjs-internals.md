@@ -2,33 +2,37 @@
 
 EmulatorJS has a small public configuration surface (`EJS_*` globals). Host netplay quality, rematch, the guest client and controller handling need more than that, so the project reaches into EmulatorJS internals. They are all listed here; `scripts/check-ejs-internals.mjs` checks each one against the pinned copy and `npm test` runs it.
 
+On the host side every internal is reached through **`web/js/ejs-adapter.js`** (`TSL.Ejs`), so a pin bump that renames one is fixed in that file; `ejs-setup.js` owns the `EJS_*` globals. The ROM-free guest (`guest-client.js`) speaks the netplay wire protocol directly and touches no EmulatorJS code.
+
 Pinned: EmulatorJS commit and fbneo core version in `scripts/fetch-emulatorjs.sh` (and `deploy/Dockerfile.web`). `web/ejs/PINNED.json` records what is installed.
 
 ## Where each dependency is used
 
 | EmulatorJS surface | Used in | For |
 |---|---|---|
-| `EJS_defaultOptions` | `netplay-bridge.js` | Core options the core actually starts with. `EJS_coreOpts` only changes the settings-menu defaults |
-| `EJS_disableLocalStorage` | `netplay-bridge.js` | Otherwise saved settings and buttons override each game file |
-| `EJS_paths` | `netplay-bridge.js` | Point `emulator.min.*` at the unminified pinned sources |
+| `EJS_defaultOptions` | `ejs-setup.js` | Core options the core actually starts with. `EJS_coreOpts` only changes the settings-menu defaults |
+| `EJS_disableLocalStorage` | `ejs-setup.js` | Otherwise saved settings and buttons override each game file |
+| `EJS_paths` | `ejs-setup.js` | Point `emulator.min.*` at the unminified pinned sources |
 | `EJS_defaultControls` merge behaviour | `games.js` `controls()` | EmulatorJS merges our table into its defaults, so unused bindings are cleared explicitly |
-| `EJS_emulator.netplay` (`Netplay`) | `netplay-bridge.js` | Room handling without the globe menu |
+| `EJS_emulator.netplay` (`Netplay`) | `ejs-adapter.js`, `netplay-bridge.js` | Room handling without the globe menu |
 | `netplay.defineNetplayFunctions`, `openRoom`, `getOpenRooms`, `leaveRoom` | `netplay-bridge.js` | Host room lifecycle |
 | `netplay.owner`, `players`, `playerID`, `name`, `url`, `updateList` | `netplay-bridge.js` | Host state |
-| `netplay.peerConnections[socketId].pc` | `netplay-bridge.js` `hostInputFilter` | Map a data channel back to its peer to decide Player 2 vs spectator |
-| `netplay.dataMessage(d)` (wrapped) / `sendMessage(d)` | `netplay-bridge.js` | Our `{tsl: ...}` messages: hello, roster, rematch |
-| `gameManager.functions.simulateInput` (wrapped) | `netplay-bridge.js` | Host input delay; every input (local and guest) passes through it |
-| `gameManager.getFrameNum` (`get_current_frame_count`) | `netplay-bridge.js` | Frame clock for the delay queue. `Module.postMainLoop` never fires in this build |
-| `gameManager.getState` / `Module.EmulatorJSGetState` / `save_state_info` | `netplay-bridge.js` `shimSaveStates` | The published core lacks `EmulatorJSGetState`; rebuilt from `save_state_info` |
-| `gameManager.loadState`, `restart` | `netplay-bridge.js` | Instant rematch and its fallback |
+| `netplay.peerConnections[socketId].pc` | `ejs-adapter.js` `playerForPc`, `peers` | Map a data channel back to its peer to decide Player 2 vs spectator |
+| `netplay.dataMessage(d)` (wrapped) / `sendMessage(d)` | `tsl-messaging.js` | Our `{tsl: ...}` messages: hello, roster, rematch |
+| `gameManager.functions.simulateInput` (wrapped) | `ejs-adapter.js` for `input-delay.js` | Host input delay; every input (local and guest) passes through it |
+| `gameManager.getFrameNum` (`get_current_frame_count`) | `ejs-adapter.js` for `input-delay.js` and the fps monitor | Frame clock for the delay queue. `Module.postMainLoop` never fires in this build |
+| `gameManager.getState` / `Module.EmulatorJSGetState` / `save_state_info` | `ejs-adapter.js` `shimSaveStates`, `getState` | The published core lacks `EmulatorJSGetState`; rebuilt from `save_state_info` |
+| `gameManager.loadState`, `restart` | `ejs-adapter.js` for the bridge's rematch | Instant rematch and its fallback |
 | `functions.setVariable` | tests only | Toggling options at runtime |
-| `EJS_emulator.controls`, `saveSettings` (wrapped) | `netplay-bridge.js` | Remaps saved per game in our own storage |
-| `frontend.gamepadSelection`, `checkGamepadInputs`, `getGamepadSelectionValue` format (`id_index`) | `netplay-bridge.js` | Controller-to-player assignment |
+| `EJS_emulator.controls`, `saveSettings` (wrapped) | `ejs-adapter.js` for `controller-bridge.js` | Remaps saved per game in our own storage |
+| `frontend.gamepadSelection`, `checkGamepadInputs`, `getGamepadSelectionValue` format (`id_index`) | `ejs-adapter.js` for `controller-bridge.js` (rules in `pad-logic.js`) | Controller-to-player assignment |
 | Netplay wire protocol: socket events `open-room`, `join-room`, `users-updated`, `webrtc-signal`, `data-message`, `leave-room`; host sends the offer; data channel `inputs` carrying `{player, index, value}`; `{type: "host-left"}` | `guest-client.js` | The ROM-free guest speaks this protocol directly |
 | `captureStream(30)`, `maxFramerate = 30`, `setParameters` | `netplay-tuning.js` | Raised to `STREAM_FPS` by wrapping the browser APIs, not EmulatorJS |
 | `src/vendor/socket.io.min.js` (v4) | `guest-client.js` | Socket.IO client loaded from the EmulatorJS path |
 
 ## Bumping EmulatorJS or the core
+
+`scripts/bump-ejs.sh <commit> [core-version]` does steps 1-3 and prints step 4.
 
 1. Change `EJS_COMMIT` / `CORE_VERSION` in `scripts/fetch-emulatorjs.sh` **and** `deploy/Dockerfile.web`.
 2. `scripts/fetch-emulatorjs.sh`

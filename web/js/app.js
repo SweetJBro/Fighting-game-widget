@@ -109,11 +109,20 @@
   /** "2 seats ≈ up to 12 Mbps upload": every viewer (opponent + each watcher) is one more encode at the direct bitrate. */
   function renderSeatsHint() {
     const n = seats();
-    const mbps = (Number(cfg.streamBitrateDirect) || 4000000) / 1e6;
-    const total = ((1 + n) * mbps).toFixed(mbps % 1 ? 1 : 0);
-    $("seats-hint").textContent = n === 0 ? "opponent only ≈ up to " + total + " Mbps upload" : n + " watcher" + (n > 1 ? "s" : "") + " ≈ up to " + total + " Mbps upload in all";
-    $("seats-hint").title = "Each viewer costs you one more video stream of up to " + mbps + " Mbps (STREAM_BITRATE_DIRECT). Fewer seats if your upload is small.";
+    const tcfg = { direct: Number(cfg.streamBitrateDirect) || 4000000, fps: Number(cfg.streamFps) || 60 };
+    const total = TSL.MatchLogic.uploadEstimateMbps({ opponent: true, spectators: n, tier: spectatorQuality(), cfg: tcfg });
+    const shown = Number.isInteger(total) ? String(total) : total.toFixed(1);
+    $("seats-hint").textContent = n === 0 ? "opponent only ≈ up to " + shown + " Mbps upload" : n + " watcher" + (n > 1 ? "s" : "") + " ≈ up to " + shown + " Mbps upload in all";
+    $("seats-hint").title = "Your opponent gets up to " + (tcfg.direct / 1e6) + " Mbps (STREAM_BITRATE_DIRECT); each watcher the same at full quality, less at reduced or minimal.";
   }
+  const QUALITY_KEY = "tsl.spectatorQuality";
+  function spectatorQuality() {
+    let v = null;
+    try { v = localStorage.getItem(QUALITY_KEY); } catch (_) {}
+    return ["full", "reduced", "minimal"].includes(v) ? v : "full";
+  }
+  $("spectator-quality").value = spectatorQuality();
+  $("spectator-quality").addEventListener("change", (e) => { try { localStorage.setItem(QUALITY_KEY, e.target.value); } catch (_) {} renderSeatsHint(); });
   renderSeatsHint();
   $("seats").addEventListener("change", (e) => { try { localStorage.setItem(SEATS_KEY, e.target.value); } catch (_) {} renderSeatsHint(); });
   $("popout-pref").checked = popoutPref();
@@ -179,7 +188,7 @@
      Each module reads what it needs from ctx and adds its own functions to it;
      calls across modules go through ctx, so the order below does not matter. */
   const ctx = { $, state, cfg, params, toast, show, myName, makeCode, shareLink, cleanUrl,
-    popoutPref, popoutUrl, openPopout, seats, inIframe, isolatedTab, sel, setGame, enterLobby, refreshPing };
+    popoutPref, popoutUrl, openPopout, seats, spectatorQuality, inIframe, isolatedTab, sel, setGame, enterLobby, refreshPing };
   TSL.UI.romScreen(ctx);
   TSL.UI.matrixUi(ctx);
   TSL.UI.matchScreen(ctx);
@@ -194,6 +203,7 @@
     show("screen-lobby");
     $("btn-local").classList.toggle("hidden", state.mode === "direct");
     $("seats-wrap").classList.toggle("hidden", state.mode === "direct" && params.get("role") !== "host");
+    $("quality-wrap").classList.toggle("hidden", state.mode === "direct" && params.get("role") !== "host");
     $("btn-local").onclick = () => withGame(state.game, () => startMatch({ code: "LOCAL", role: "local" }));
     if (state.mode === "direct") return startDirect();
     if (state.mode === "matrix") return ctx.matrixLobby();
@@ -255,7 +265,8 @@
 
   // Direct link (from the Fluxer bot or a shared link): ?match=CODE&role=host|guest
   function startDirect() {
-    const code = params.get("match").toUpperCase();
+    const code = String(params.get("match")).toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 16);
+    if (!code) { toast("That match link has no usable code.", true); state.mode = "standalone"; return standaloneLobby(); }
     const role = ["host", "guest", "spectator"].includes(params.get("role")) ? params.get("role") : "guest";
     $("lobby-title").textContent = "Match " + code;
     $("lobby-subtitle").textContent = {

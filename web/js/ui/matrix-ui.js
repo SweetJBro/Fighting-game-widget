@@ -39,21 +39,37 @@ TSL.UI.matrixUi = function install(ctx) {
     renderChallenges();
   }
 
+  // Room events come from other members' widgets (or anything that can send a
+  // room event), so every field is checked before it reaches the lobby or a link.
+  const CODE_RE = /^[A-Z0-9-]{3,16}$/;
+  const text = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
+  const who = (p, sender) => {
+    if (!p || typeof p !== "object") return { id: sender, name: text(sender, 64) || "someone" };
+    const id = text(p.id, 255) || sender;
+    return { id, name: text(p.name, 32) || id, ping: typeof p.ping === "number" && isFinite(p.ping) ? Math.max(0, Math.round(p.ping)) : undefined };
+  };
   function ingest(c, sender, ts) {
-    if (!c || !c.kind) return;
-    if (c.kind === "challenge" && c.id && c.code) {
+    if (!c || typeof c !== "object" || typeof c.kind !== "string") return;
+    const id = text(c.id, 64);
+    if (!id) return;
+    if (c.kind === "challenge") {
+      const code = text(c.code, 16).toUpperCase();
+      if (!CODE_RE.test(code)) return;
       // Events from before multi-game have no game field: they were 3rd Strike.
-      state.seenChallenges.set(c.id, { id: c.id, code: c.code, game: c.game || "sfiii3nr1", from: c.from || { id: sender, name: sender }, to: c.to || null, ts, sender, taken: false });
-    } else if (c.kind === "accept" && c.id) {
-      const ch = state.seenChallenges.get(c.id);
-      if (ch) { ch.taken = true; ch.by = c.by || { id: sender, name: sender }; ch.takenTs = ts; }
-      if (ch && state.challengeId === c.id && c.by) {
-        $("match-opponent").textContent = "vs " + c.by.name;
+      const game = TSL.Games.get(text(c.game, 32) || "sfiii3nr1") ? (text(c.game, 32) || "sfiii3nr1") : text(c.game, 32);
+      state.seenChallenges.set(id, { id, code, game, from: who(c.from, sender), to: text(c.to, 255) || null, ts, sender, taken: false });
+    } else if (c.kind === "accept") {
+      const ch = state.seenChallenges.get(id);
+      if (ch) { ch.taken = true; ch.by = who(c.by, sender); ch.takenTs = ts; }
+      if (ch && state.challengeId === id) {
+        $("match-opponent").textContent = "vs " + ch.by.name;
         // Open challenge: whoever accepted is the one allowed to be Player 2.
-        if (state.current && state.current.role === "host" && !ch.to) TSL.Netplay.setExpectedGuest(c.by.id);
+        if (state.current && state.current.role === "host" && !ch.to) TSL.Netplay.setExpectedGuest(ch.by.id);
       }
-    } else if (c.kind === "cancel" && c.id) {
-      state.seenChallenges.delete(c.id);
+    } else if (c.kind === "cancel") {
+      // Only the challenger (or the sender of the original event) can cancel it.
+      const ch = state.seenChallenges.get(id);
+      if (ch && (ch.from.id === sender || ch.sender === sender || ch.from.id === state.myId)) state.seenChallenges.delete(id);
     }
     renderChallenges();
   }
@@ -109,6 +125,7 @@ TSL.UI.matrixUi = function install(ctx) {
       left.querySelector(".meta").textContent = c.code;
       const btn = document.createElement("button"); btn.className = "btn btn-sm"; btn.textContent = "Watch";
       btn.onclick = () => ctx.asGuestOf(TSL.Games.get(c.game), () => ctx.startMatch({ code: c.code, role: "spectator" }));
+      if (!TSL.Games.get(c.game)) { btn.disabled = true; btn.title = "This lobby does not have " + c.game; }
       li.append(left, btn); ul.appendChild(li);
     }
   }

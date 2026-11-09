@@ -24,6 +24,7 @@
       <h2>Netplay server</h2>
       <p id="netplay" class="hint">checking…</p>
       <p id="packaged" class="hint hidden"></p>
+      <p id="cfg" class="hint"></p>
       <h3>Open rooms</h3>
       <table><thead><tr><th>Game</th><th>Rooms</th><th>Who</th></tr></thead><tbody id="rooms"></tbody></table>
       <p id="when" class="hint"></p>
@@ -41,6 +42,12 @@
           pk.textContent = "PACKAGED_ROM=1: this server hands " + (s.packaged.files.length ? s.packaged.files.join(", ") : "no complete set yet") + " to anyone who can open the page. Keep this deployment private.";
           pk.className = "hint q-poor";
         } else pk.className = "hint hidden";
+        if (s.config) {
+          const c = s.config;
+          document.getElementById("cfg").textContent = "Build " + (s.version || "?") + (s.commit ? " (" + s.commit.slice(0, 10) + ")" : "") + " · stream " + c.streamFps + " fps, " +
+            (c.streamBitrateDirect / 1e6) + " Mbps direct / " + (c.streamBitrateRelay / 1e6) + " Mbps relay · default delay " + c.inputDelayDefault + " · " + c.maxSpectators + " watch seats · " +
+            (c.turn ? "TURN configured" : "no TURN (STUN only)") + " · CSP " + c.csp + " · EmulatorJS from " + c.ejsDataPath;
+        }
         const tb = document.getElementById("rooms"); tb.innerHTML = "";
         for (const g of s.games) {
           const tr = document.createElement("tr");

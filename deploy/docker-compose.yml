@@ -4,8 +4,12 @@
 # Copy ../.env.example to ../.env and fill it in, then: docker compose up -d --build
 services:
   web:
-    build: { context: .., dockerfile: deploy/Dockerfile.web }
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args: { GIT_COMMIT: "${GIT_COMMIT:-}" }   # GIT_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
     environment:
+      CSP_MODE: ${CSP_MODE:-report}
       NETPLAY_URL: https://${NETPLAY_HOST}
       PUBLIC_URL: https://${LOBBY_HOST}/
       ICE_SERVERS: ${ICE_SERVERS:-[{"urls":"stun:stun.l.google.com:19302"}]}

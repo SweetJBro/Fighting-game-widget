@@ -11,16 +11,16 @@ Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core in WebA
 
 ## Netplay feel and connection quality
 
-* **Input delay (host).** The host plays with no network lag and the guest with a full round trip, so the host can delay their *own* inputs by 0-8 frames (default 3, picker in the match bar, remembered per browser) to even it out. It makes matches fairer; it cannot make the guest's side faster.
+* **Input delay (host).** The host plays with no network lag and the guest with a full round trip, so the host can delay their *own* inputs by 0-8 frames (default 3, picker in the match bar, remembered per browser) to even it out. It makes matches fairer; it cannot make the guest's side faster. Next to the picker: what each side feels ("≈50 ms you · ≈93 ms them") and a recommendation for the current ping (half of what the guest feels, in frames). **auto** lets the page move the delay one frame at a time toward that recommendation, only after several consecutive pings agree and never more than once per five seconds; off by default.
 * **60 fps stream.** EmulatorJS captures and encodes the host canvas at 30 fps. `web/js/netplay-tuning.js` raises both to `STREAM_FPS` (default 60), lifts the bitrate cap to match, keeps frame rate ahead of resolution under congestion, and sets the guest's jitter buffer target to 0.
 * **Pop out.** "Open matches in a new tab" (on by default inside a chat client) or the Pop out button runs the match in its own full-size tab. That tab is cross-origin isolated (`?isolate=1` gets COOP/COEP), so EmulatorJS also loads its threaded core; on CPS-3 that measured no faster, so the point is a tab you keep in front, outside the chat.
-* **Connection quality.** The top bar shows your round trip to the netplay server. Matrix challenges carry the challenger's server ping, so the accepter sees an estimate before accepting. During a match the bar shows emulator fps (host), peer ping, stream fps, direct or relay route and packet loss, with a coloured dot. When the link is poor, or goes through a TURN relay, a banner says what helps (the better-connected player hosting, fewer watch seats, a closer relay); every banner can be dismissed for the session.
+* **Connection quality.** The top bar shows your round trip to the netplay server. Matrix challenges carry the challenger's server ping, so the accepter sees an estimate before accepting. During a match the bar shows emulator fps (host), peer ping, stream fps, direct or relay route and packet loss, with a coloured dot. When the link is poor, or goes through a TURN relay, a banner says what helps (the better-connected player hosting, fewer watch seats, a closer relay); every banner can be dismissed for the session. A host whose tab was hidden is told for how long the game froze when they come back. **Debug** in the match bar copies a report for bug reports: build, browser, game, role, the last ping and stream samples, route, controllers, peers; no credentials and no ROM data.
 * **Performance warning.** If the host's emulator stays under the game's threshold (50 fps) for three seconds, a banner says so and why (background tab, chat iframe, or CPU).
 
 ## Rematch and spectators
 
 * **Rematch.** Once both players are in, the host has a Rematch button and the opponent has Ask for rematch, which shows the host a prompt. Room, connection and stream stay up. The widget saves the board's state at the first coin of the session, when the game is idle on its title or attract screen, so a rematch returns there instantly instead of rebooting the board; if no coin has gone in yet, it falls back to a reboot. Insert coin and press Start as usual. In a local match the same button is Restart.
-* **Spectators.** The host picks how many watch seats their matches have (0-6, **Watch seats** in the lobby, remembered per browser; the server default is `MAX_SPECTATORS`, 2). Watch from a **Watch** button in the open-matches list, from **Live matches** in the Matrix widget (accepted challenges between other members), from the host's **Watch link** button, or from the Fluxer bot's watch link. Spectators get the host's stream and their inputs are ignored. Each one costs the host another video encode and upload; the seats picker says how much ("2 watchers ≈ up to 12 Mbps upload in all" at the default 4 Mbps per viewer).
+* **Spectators.** The host picks how many watch seats their matches have (0-6, **Watch seats** in the lobby, remembered per browser; the server default is `MAX_SPECTATORS`, 2). Watch from a **Watch** button in the open-matches list, from **Live matches** in the Matrix widget (accepted challenges between other members), from the host's **Watch link** button, or from the Fluxer bot's watch link. Spectators get the host's stream and their inputs are ignored. Each one costs the host another video encode and upload; the seats picker says how much ("2 watchers ≈ up to 12 Mbps upload in all" at the default 4 Mbps per viewer). **Watch quality** (full / reduced / minimal) caps the bitrate and frame rate of the stream to watchers only: reduced is about a third of the upload per watcher, minimal a fifth; the opponent always gets the full stream. During a match the host's bar shows the actual upload ("↑ 7.8 Mbps · 2 watching").
 * **Who is Player 2.** The host decides. In the Matrix widget, a challenge to a named member, or an open challenge once someone accepts it, reserves Player 2 for that member's Matrix id; anyone else who joins watches. This prevents mix-ups, not impostors, since the id is what the joiner's widget reports. Otherwise the first joiner who asked to play gets Player 2, even if a spectator connected first. Someone who joins a match that already has an opponent is told they are watching.
 * **Save states.** EmulatorJS's own save and load paths work again; the published fbneo core lacks the export current EmulatorJS calls, so the bridge rebuilds it from the core's older one.
 
@@ -70,8 +70,14 @@ Fightcade's 3rd Strike is `sfiii3nr1` with Region = Japan and CPU = 100% (its `c
 web/              static lobby + player (vanilla JS, no build step)
   js/app.js              entry: config, game picker, standalone and link lobbies, boot
   js/ui/                 screens: rom-screen, matrix-ui (challenges, live matches), match-screen, pads-panel
-  js/netplay-bridge.js   drives EmulatorJS netplay programmatically (openRoom / joinRoom), host input delay, rematch, fps monitor
-  js/match-logic.js      pure: who is Player 2 (decideRoster), the input DelayQueue; unit-tested
+  js/netplay-bridge.js   host side orchestrator: wires the modules below to EmulatorJS and the UI
+  js/ejs-adapter.js      every EmulatorJS internal we touch (one place to fix on a pin bump)
+  js/ejs-setup.js        EJS_* configuration and the loader
+  js/input-delay.js      host input delay (wraps simulate_input, releases presses by core frame)
+  js/roster.js           who is Player 2 and who watches; hellos, Matrix reservation, broadcast
+  js/tsl-messaging.js    our { tsl: ... } messages on EmulatorJS's data path
+  js/controller-bridge.js  pads, preferred pad and remaps applied to EmulatorJS
+  js/match-logic.js      pure: decideRoster, DelayQueue, lag estimates, recommended/auto delay, spectator caps; unit-tested
   js/pad-logic.js        pure: which controller plays (preferred pad, player slots, Steam renumbering), reset; unit-tested
   js/guest-client.js     ROM-free guest/spectator: joins the room, shows the host's stream, sends inputs (no EmulatorJS)
   js/netplay-tuning.js   60 fps stream, bitrate, jitter buffer, peer stats (wraps browser WebRTC APIs, no EmulatorJS fork)
@@ -136,7 +142,7 @@ Netplay needs a secure context for WebRTC and for the Matrix iframe: `localhost`
 2. `cp .env.example .env` and fill it in. Add a TURN server to `ICE_SERVERS` if players sit behind strict NATs.
 3. `cd deploy && docker compose up -d --build` (add `--profile fluxer` to run the bot, `--profile turn` for the bundled coturn relay; see `.env.example` for its `TURN_*` settings and the matching `ICE_SERVERS`). The web and netplay containers have health checks; `https://<LOBBY_HOST>/status.html` shows netplay reachability, open rooms and a warning when `PACKAGED_ROM=1`.
 
-EmulatorJS is pinned. `scripts/fetch-emulatorjs.sh` installs EmulatorJS at a fixed git commit plus the fbneo core from npm `@emulatorjs/core-fbneo@4.2.3` into `web/ejs/` (git-ignored), and the server uses it automatically; the web Docker image runs the script at build time. A git commit rather than an npm release is required because `@emulatorjs/emulatorjs@4.2.3`, the newest release, still carries the old netplay client that cannot talk to the current netplay server. Without the pinned copy the page falls back to the moving `https://cdn.emulatorjs.org/latest/data/`. Bump `EJS_COMMIT` in the script and the Dockerfile together, and retest netplay when you do.
+EmulatorJS is pinned. `scripts/fetch-emulatorjs.sh` installs EmulatorJS at a fixed git commit plus the fbneo core from npm `@emulatorjs/core-fbneo@4.2.3` into `web/ejs/` (git-ignored), and the server uses it automatically; the web Docker image runs the script at build time. A git commit rather than an npm release is required because `@emulatorjs/emulatorjs@4.2.3`, the newest release, still carries the old netplay client that cannot talk to the current netplay server. Without the pinned copy the page falls back to the moving `https://cdn.emulatorjs.org/latest/data/`. `scripts/bump-ejs.sh <commit> [core-version]` changes both pins, reinstalls, runs the internals check and the tests, and prints the manual netplay checklist.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -155,6 +161,8 @@ EmulatorJS is pinned. `scripts/fetch-emulatorjs.sh` installs EmulatorJS at a fix
 | `PACKAGED_ROM` | unset | `1` serves and advertises complete sets from `ROMS_DIR` (private deployments only) |
 | `NETPLAY_STATUS_URL` | `NETPLAY_URL`, else `http://127.0.0.1:4000` | Where the web server itself reaches the netplay server for `/status.json` |
 | `LOG_FORMAT` | JSON lines | `text` for human-readable server log lines |
+| `CSP_MODE` | `report` | Content-Security-Policy for the page: `report` (Report-Only; violations show in the browser console), `enforce`, or `off`. Sources follow `NETPLAY_URL`, `EJS_DATA_PATH` and the CDNs. EmulatorJS needs `'unsafe-eval'` and blob: workers, so the policy restricts origins, not script behaviour |
+| `GIT_COMMIT` | unset | Shown on `/status.json`; the compose build passes it as a build arg |
 
 Without Docker: run `scripts/netplay-server.sh` and `node server/serve.js` behind any TLS reverse proxy, setting `NETPLAY_URL` and `PUBLIC_URL` for the web process.
 
@@ -211,6 +219,7 @@ Measured on this machine in the desktop app's browser pane: the host runs CPS-3 
 * Leaving a match reloads the page: EmulatorJS cannot be torn down and restarted in place. Rematch does not need to.
 * Fluxer's mention syntax in message content is assumed to be Discord-style `<@id>`; that part of the docs was not explicit.
 * `/config.json` hands the ICE server list, including any static TURN username and credential, to every visitor. That is inherent to browser WebRTC; use time-limited TURN credentials if the TURN server matters.
+* WebRTC is peer to peer: the other player, and a TURN relay when one is used, sees your IP address, as in any peer-to-peer game. The lobby says so. Game files never leave the host's browser.
 * Each game accepts exactly one set (the Fightcade one). Other revisions, such as `sfiii3n`, would need their own game file.
 * EmulatorJS does not remember its own settings (such as volume) between visits: saving them would let a stale copy override each game's pinned options. Button remaps are saved separately (see Controls).
 

@@ -30,6 +30,7 @@ TSL.GuestClient = (() => {
   let roster = null;
   let timers = [];
   let started = false, connected = false, hostLeft = false;
+  let reconnects = 0;          // renegotiations we asked the host for
   const pressed = new Map();   // index -> value currently held (any source)
 
   const report = (state, extra) => { if (opts && opts.onStatus) opts.onStatus(Object.assign({ state }, extra || {})); };
@@ -88,13 +89,26 @@ TSL.GuestClient = (() => {
       dc = e.channel;
       dc.onmessage = (ev) => {
         let d; try { d = JSON.parse(ev.data); } catch (_) { return; }
-        if (d && d.type === "host-left") { hostLeft = true; report("error", { message: "The host left the match." }); }
+        if (d && d.type === "host-left") { hostLeft = true; report("error", { message: "The host left the match. Press Leave to go back to the lobby." }); }
       };
       dc.onopen = () => { for (const [index, value] of pressed) sendInput(index, value); };
     };
+    // Recovery: "failed" asks the host for a fresh offer at once; "disconnected"
+    // (a route change, a laptop sleeping) gets 5 s to heal on its own first.
+    let disconnectedTimer = null;
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") connected = true;
-      if (pc.connectionState === "failed" && !hostLeft) socket.emit("webrtc-signal", { target: sender, requestRenegotiate: true, reason: "pc-failed" });
+      const st = pc.connectionState;
+      if (st === "connected") { connected = true; clearTimeout(disconnectedTimer); }
+      if (st === "failed" && !hostLeft) socket.emit("webrtc-signal", { target: sender, requestRenegotiate: true, reason: "pc-failed" });
+      if (st === "disconnected" && !hostLeft) {
+        clearTimeout(disconnectedTimer);
+        disconnectedTimer = setTimeout(() => {
+          if (pc.connectionState === "disconnected" && started && !hostLeft) {
+            reconnects++;
+            socket.emit("webrtc-signal", { target: sender, requestRenegotiate: true, reason: "pc-disconnected" });
+          }
+        }, 5000);
+      }
     };
     return pc;
   }
@@ -322,6 +336,16 @@ TSL.GuestClient = (() => {
     /** For tests: why these pads are being read ("preferred" | "standard" | "all" | "none"). */
     pickReason() { return lastPickReason; },
     /** For tests: inputs currently held. */
-    held() { return Object.fromEntries(pressed); }
+    held() { return Object.fromEntries(pressed); },
+    /** Everything useful in a bug report (no credentials). */
+    debugInfo() {
+      return {
+        role: opts && opts.role, game: opts && opts.game.id, code: opts && opts.code, me,
+        socket: !!(socket && socket.connected), pc: pc ? pc.connectionState : null, dc: dc ? dc.readyState : null,
+        reconnects, hostLeft, roster, players: Object.values(players).map((q) => q.player_name),
+        held: Object.fromEntries(pressed), pickReason: lastPickReason,
+        pads: this.pads ? this.pads() : []
+      };
+    }
   };
 })();

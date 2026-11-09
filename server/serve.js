@@ -22,7 +22,12 @@
                      ROMs in roms/ never publishes them by accident)
    NETPLAY_STATUS_URL  where this server itself reaches the netplay server for /status.json
                      (default NETPLAY_URL, else http://127.0.0.1:4000)
-   LOG_FORMAT=text   human-readable log lines instead of JSON lines */
+   LOG_FORMAT=text   human-readable log lines instead of JSON lines
+   CSP_MODE          report | enforce | off (default report): Content-Security-Policy for the page.
+                     "report" sends it as Report-Only, so violations show in the browser console
+                     without blocking anything; switch to "enforce" once a deployment is clean.
+                     Sources are derived from NETPLAY_URL, EJS_DATA_PATH and ICE_SERVERS.
+   GIT_COMMIT        shown on /status.json when set (the Docker build passes it) */
 "use strict";
 const http = require("http");
 const fs = require("fs");
@@ -114,12 +119,58 @@ async function config() {
   return out;
 }
 
+/** Content-Security-Policy for the page. frame-ancestors stays open on purpose: Matrix clients
+    iframe the page as a widget. Everything EmulatorJS needs is allowed explicitly: its data path
+    (local or CDN), WebAssembly, 'unsafe-eval' (the Emscripten core evaluates a script string),
+    blob: scripts and fetches (its workers), inline styles it injects, and the netplay server over
+    HTTP and WebSocket. Measured in report-only mode with a running game; the policy therefore
+    limits *where* code may come from rather than *what* it may do. */
+function cspValue() {
+  const origin = (u) => { try { return new URL(u).origin; } catch (_) { return null; } };
+  const ws = (o) => o && o.replace(/^http/, "ws");
+  // Without NETPLAY_URL the page falls back to <this host>:4000 (web/js/config.js), so allow that port anywhere.
+  const netplay = process.env.NETPLAY_URL ? origin(process.env.NETPLAY_URL) : "http://*:4000";
+  const ejs = origin(process.env.EJS_DATA_PATH || "");
+  const cdnEjs = "https://cdn.emulatorjs.org";            // fallback when web/ejs is not installed
+  const widgetApi = "https://cdn.jsdelivr.net";          // matrix-widget-api
+  const self = "'self'";
+  const scripts = [self, widgetApi, cdnEjs, ejs, "blob:", "'wasm-unsafe-eval'", "'unsafe-eval'"];
+  const connects = [self, "blob:", cdnEjs, ejs, netplay, ws(netplay)];
+  const uniq = (a) => [...new Set(a.filter(Boolean))].join(" ");
+  return [
+    "default-src " + self,
+    "script-src " + uniq(scripts),
+    "style-src " + uniq([self, "'unsafe-inline'", cdnEjs, ejs]),
+    "img-src " + uniq([self, "data:", "blob:", cdnEjs, ejs]),
+    "font-src " + uniq([self, "data:", cdnEjs, ejs]),
+    "media-src " + uniq([self, "blob:", "data:"]),
+    "connect-src " + uniq(connects),
+    "worker-src " + uniq([self, "blob:"]),
+    "child-src " + uniq([self, "blob:"]),
+    "object-src 'none'",
+    "base-uri " + self,
+    "frame-ancestors *"
+  ].join("; ");
+}
+const CSP_MODE = ["report", "enforce", "off"].includes(process.env.CSP_MODE) ? process.env.CSP_MODE : "report";
+const CSP = cspValue();
+
 /** Netplay server reachability and open rooms per game, for /status.json and status.html. */
 async function status(hostHeader) {
   const base = (process.env.NETPLAY_STATUS_URL || process.env.NETPLAY_URL || "http://127.0.0.1:4000").replace(/\/$/, "");
   const packagedFiles_ = process.env.PACKAGED_ROM === "1" ? Object.values(await packagedFiles()).map((f) => f.name) : [];
-  const out = { time: new Date().toISOString(), netplay: { url: base, reachable: false, ms: null },
-    packaged: { enabled: process.env.PACKAGED_ROM === "1", files: packagedFiles_ }, games: [] };
+  let version = null;
+  try { version = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).version; } catch (_) {}
+  const iceUrls = [];
+  try { for (const s of JSON.parse(process.env.ICE_SERVERS || "[]")) iceUrls.push(...[].concat(s.urls || [])); } catch (_) {}
+  const cfgNow = await config();
+  const out = { time: new Date().toISOString(), version, commit: process.env.GIT_COMMIT || null,
+    netplay: { url: base, reachable: false, ms: null },
+    packaged: { enabled: process.env.PACKAGED_ROM === "1", files: packagedFiles_ },
+    config: { streamFps: cfgNow.streamFps ?? 60, streamBitrateDirect: cfgNow.streamBitrateDirect ?? 4000000, streamBitrateRelay: cfgNow.streamBitrateRelay ?? 1500000,
+      inputDelayDefault: cfgNow.inputDelayDefault ?? 3, maxSpectators: cfgNow.maxSpectators ?? 2, threads: cfgNow.threads ?? true,
+      ejsDataPath: cfgNow.ejsDataPath, iceServers: iceUrls, turn: iceUrls.some((u) => /^turns?:/i.test(u)), csp: CSP_MODE },
+    games: [] };
   for (const g of games()) {
     const entry = { id: g.id, name: g.name, rooms: null };
     try {
@@ -190,7 +241,17 @@ async function handle(req, res) {
     const headers = { "content-type": type, "cache-control": "no-cache" };
     // Allow Matrix clients (Element etc.) to iframe this page as a widget.
     // Do NOT send X-Frame-Options here; frame-ancestors is deliberately open.
-    headers["content-security-policy"] = "frame-ancestors *";
+    // The full policy (CSP_MODE) rides on the HTML documents only.
+    if (f.endsWith(".html") && CSP_MODE !== "off") {
+      headers[CSP_MODE === "enforce" ? "content-security-policy" : "content-security-policy-report-only"] = CSP;
+      if (CSP_MODE !== "enforce") headers["content-security-policy"] = "frame-ancestors *";
+    } else {
+      headers["content-security-policy"] = "frame-ancestors *";
+    }
+    headers["x-content-type-options"] = "nosniff";
+    headers["referrer-policy"] = "strict-origin-when-cross-origin";
+    // EmulatorJS and the core are pinned and versioned by path (EJS_COMMIT), so they may be cached for a day.
+    if (/\/ejs\//.test(f.replace(ROOT, ""))) headers["cache-control"] = "public, max-age=86400";
     // Pop-out tabs (?isolate=1) become cross-origin isolated so SharedArrayBuffer,
     // and with it EmulatorJS's threaded core, is available. Only on request: COEP
     // on the widget iframe would buy nothing (the parent client is not isolated).

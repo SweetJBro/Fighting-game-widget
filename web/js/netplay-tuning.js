@@ -23,6 +23,9 @@ TSL.Tuning = (() => {
   const pcs = new Set();
   let installed = false;
   let failures = 0;
+  // Per-connection encoder caps (spectator tiers), applied by the setParameters wrapper.
+  const peerCaps = new WeakMap();
+  const pcOfSender = (sender) => { for (const pc of pcs) { try { if (pc.getSenders().includes(sender)) return pc; } catch (_) {} } return null; };
 
   /** Wrap a data channel so a host-side filter (TSL.Tuning.inputFilter) sees every
       message before EmulatorJS's own onmessage handler does. */
@@ -85,6 +88,11 @@ TSL.Tuning = (() => {
             const relay = enc.maxBitrate === EJS_RELAY_BITRATE;
             enc.maxFramerate = c.fps;
             enc.maxBitrate = relay ? c.relay : c.direct;
+            const pc = pcOfSender(this), caps = pc && peerCaps.get(pc);
+            if (caps) {
+              if (caps.maxBitrate) enc.maxBitrate = Math.min(enc.maxBitrate, caps.maxBitrate);
+              if (caps.maxFramerate) enc.maxFramerate = Math.min(enc.maxFramerate, caps.maxFramerate);
+            }
             // Two temporal layers let a weak downlink fall back to half rate
             // instead of freezing; keep EmulatorJS's choice of L1T2.
             params.degradationPreference = "maintain-framerate";
@@ -116,6 +124,40 @@ TSL.Tuning = (() => {
       Object.setPrototypeOf(Wrapped, Orig);   // keeps static methods such as generateCertificate
       window.RTCPeerConnection = Wrapped;
     }
+  }
+
+  /** Cap (or uncap, with null) the video sent to one peer; re-applies the encoder parameters at once. */
+  function setPeerCaps(pc, caps) {
+    const before = peerCaps.get(pc) || null;
+    if (JSON.stringify(before) === JSON.stringify(caps || null)) return false;
+    if (caps) peerCaps.set(pc, caps); else peerCaps.delete(pc);
+    try {
+      for (const sender of pc.getSenders()) {
+        if (!sender.track || sender.track.kind !== "video") continue;
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        sender.setParameters(params).catch(() => {});
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  // Bytes sent per connection at the last upload() call, for the rate.
+  const lastSent = new WeakMap();
+  /** Host upload right now, in Mbps, summed over every live connection (video + audio). Null until two samples. */
+  async function upload() {
+    let bits = 0, any = false;
+    const now = performance.now();
+    for (const pc of pcs) {
+      if (pc.connectionState !== "connected") continue;
+      let stats; try { stats = await pc.getStats(); } catch (_) { continue; }
+      let sent = 0;
+      stats.forEach((r) => { if (r.type === "outbound-rtp" && typeof r.bytesSent === "number") sent += r.bytesSent; });
+      const prev = lastSent.get(pc);
+      lastSent.set(pc, { sent, t: now });
+      if (prev && now > prev.t) { bits += 8 * (sent - prev.sent) * 1000 / (now - prev.t); any = true; }
+    }
+    return any ? Math.round(bits / 1e5) / 10 : null;
   }
 
   /** One sample of the best live peer connection, or null when there is none. */
@@ -173,7 +215,7 @@ TSL.Tuning = (() => {
   }
 
   return {
-    install, sample, grade, serverPing, pcs, config: cfg,
+    install, sample, grade, serverPing, pcs, config: cfg, setPeerCaps, upload,
     /** Peer connections that ended in "failed" (ICE could not find a route). */
     failures: () => failures,
     /** Live peer connections in "connected" state. */

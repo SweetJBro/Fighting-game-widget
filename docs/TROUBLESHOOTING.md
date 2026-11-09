@@ -66,11 +66,29 @@ match bar shows the estimate next to the host's delay picker. A **relay** route
 adds the TURN server's distance twice. The host raising the input delay makes
 the match fairer, not faster.
 
+**The delay picker changed by itself**
+**auto** is on (checkbox next to the picker). It moves one frame at a time
+toward the recommendation shown as "rec." once several pings in a row agree.
+Untick it to hold a value.
+
+**Reporting a bug**
+Press **Debug** in the match bar. It copies a report (build, browser, game,
+role, the last ping and stream samples, route, controllers, peers; no
+credentials, no ROM data) to paste into the issue or the chat.
+
 ## Browsers and clients
 
 **Background tab**
 A hidden tab runs no animation frames, so the host's game freezes and the guest
-sees a still image. Keep it in front, or pop out.
+sees a still image. Keep it in front, or pop out. When the host's tab comes back
+a banner says for how long the game was frozen.
+
+**Console shows "Content-Security-Policy" messages**
+`CSP_MODE=report` (the default) sends the policy as Report-Only: the browser
+logs what the policy *would* have blocked and blocks nothing. A message about
+EmulatorJS or the netplay server means `EJS_DATA_PATH` or `NETPLAY_URL` is not
+reflected in the policy; fix the variable, then `CSP_MODE=enforce` once the
+console stays clean.
 
 **Safari**
 No `COEP: credentialless`, so a pop-out tab is not cross-origin isolated and the

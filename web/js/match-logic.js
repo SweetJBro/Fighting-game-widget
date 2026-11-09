@@ -64,5 +64,73 @@
     get size() { return this.items.length; }
   }
 
-  return { decideRoster, DelayQueue };
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  /** What the guest feels: one round trip plus a video frame each way (encode on the host, decode on the guest). */
+  function guestLagMs(rttMs, fps = 60) {
+    if (rttMs === null || rttMs === undefined) return null;
+    return Math.round(rttMs + 2 * 1000 / fps);
+  }
+  /** What the host feels with a delay of `frames`. */
+  function hostLagMs(frames, fps = 60) { return Math.round(frames * 1000 / fps); }
+  /**
+   * Suggested host delay for a round trip: half of the guest's lag, in frames,
+   * capped at 0-8. Meeting in the middle halves the gap between the two sides
+   * without making the host's own inputs feel as heavy as the guest's.
+   */
+  function recommendedDelay(rttMs, fps = 60) {
+    const guest = guestLagMs(rttMs, fps);
+    if (guest === null) return null;
+    return clamp(Math.round(guest / 2 / (1000 / fps)), 0, 8);
+  }
+
+  /**
+   * Opt-in automatic host delay. Conservative on purpose:
+   *   - every raw sample must disagree with the current delay for `holdSamples`
+   *     samples in a row, so one bad ping changes nothing
+   *   - the direction comes from the smoothed round trip (EMA), not the last sample
+   *   - the delay then moves one frame, at most once per `minIntervalMs`
+   * It can go down as well as up; the DelayQueue keeps press order either way.
+   */
+  class AutoDelay {
+    constructor({ fps = 60, alpha = 0.3, holdSamples = 3, minIntervalMs = 5000 } = {}) {
+      Object.assign(this, { fps, alpha, holdSamples, minIntervalMs });
+      this.ema = null; this.hold = 0; this.lastChange = -Infinity; this.target = null;
+    }
+    /** One RTT sample. Returns the new delay to apply, or null to leave it. */
+    sample(rttMs, nowMs, current) {
+      if (rttMs === null || rttMs === undefined) { this.hold = 0; return null; }
+      this.ema = this.ema === null ? rttMs : this.ema + this.alpha * (rttMs - this.ema);
+      this.target = recommendedDelay(this.ema, this.fps);
+      const raw = recommendedDelay(rttMs, this.fps);
+      if (raw === current || this.target === current) { this.hold = 0; return null; }
+      this.hold++;
+      if (this.hold < this.holdSamples || nowMs - this.lastChange < this.minIntervalMs) return null;
+      this.hold = 0; this.lastChange = nowMs;
+      return current + (this.target > current ? 1 : -1);
+    }
+  }
+
+  /**
+   * Encoder caps for spectator connections (Player 2 keeps the full stream).
+   *   full     no extra cap: cfg.direct / cfg.fps like the opponent
+   *   reduced  about a third of the upload per watcher
+   *   minimal  a fifth; fine for following a set, not for frame-counting
+   * cfg: { direct, fps } from TSL.Tuning.config(). Returns null for "full".
+   */
+  function spectatorCaps(tier, cfg) {
+    const direct = (cfg && cfg.direct) || 4000000, fps = (cfg && cfg.fps) || 60;
+    if (tier === "reduced") return { maxBitrate: Math.min(1500000, direct), maxFramerate: Math.min(30, fps) };
+    if (tier === "minimal") return { maxBitrate: Math.min(600000, direct), maxFramerate: Math.min(20, fps) };
+    return null;
+  }
+  /** Host upload with the current viewers, in Mbps: the opponent at full rate plus each watcher at its tier. */
+  function uploadEstimateMbps({ opponent, spectators, tier, cfg }) {
+    const direct = (cfg && cfg.direct) || 4000000;
+    const caps = spectatorCaps(tier, cfg);
+    const per = caps ? caps.maxBitrate : direct;
+    return ((opponent ? direct : 0) + spectators * per) / 1e6;
+  }
+
+  return { decideRoster, DelayQueue, guestLagMs, hostLagMs, recommendedDelay, AutoDelay, spectatorCaps, uploadEstimateMbps };
 });

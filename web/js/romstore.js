@@ -11,10 +11,13 @@ TSL.RomStore = (() => {
 
   function open() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB, 1);
+      let req;
+      try { req = indexedDB.open(DB, 1); }
+      catch (e) { reject(new Error("This browser blocks site storage (private window or storage disabled): " + (e.message || e))); return; }
       req.onupgradeneeded = () => req.result.createObjectStore(STORE);
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onerror = () => reject(req.error || new Error("could not open the ROM store"));
+      req.onblocked = () => reject(new Error("the ROM store is open in another tab; close it and retry"));
     });
   }
   function tx(mode, fn) {
@@ -90,19 +93,28 @@ TSL.RomStore = (() => {
     /** Stored set for a game, or null. Drops records that no longer pass the manifest. */
     async get(game) {
       await migrate();
-      const rec = await getRec(romKey(game.id));
-      if (!rec || !rec.blob) return null;
+      let rec;
+      try { rec = await getRec(romKey(game.id)); } catch (e) { console.error("ROM store:", e.message || e); return null; }
+      if (!rec || !(rec.blob instanceof Blob) || !rec.blob.size) {
+        // Missing, or a damaged record (an interrupted write, a cleared blob): drop it so the player is asked again.
+        if (rec) { try { await delRec(romKey(game.id)); } catch (_) {} }
+        return null;
+      }
       if (rec.manifestOk !== true) {
         const r = await TSL.ZipCheck.check(rec.blob, game.rom).catch(() => ({ ok: false }));
         if (!r.ok) { await delRec(romKey(game.id)); return null; }
-        rec.manifestOk = true; await putRec(romKey(game.id), rec);
+        rec.manifestOk = true;
+        try { await putRec(romKey(game.id), rec); } catch (_) { /* keeping the flag is a nicety */ }
       }
       return toFile(rec);
     },
 
     async getBios(game) {
       if (!game.bios) return null;
-      return toFile(await getRec(biosKey(game.bios.id)));
+      let rec;
+      try { rec = await getRec(biosKey(game.bios.id)); } catch (e) { console.error("ROM store:", e.message || e); return null; }
+      if (rec && !(rec.blob instanceof Blob && rec.blob.size)) { try { await delRec(biosKey(game.bios.id)); } catch (_) {} return null; }
+      return toFile(rec);
     },
 
     /** Take whatever zips the player picked for `game`, in any order and across

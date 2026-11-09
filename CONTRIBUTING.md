@@ -18,9 +18,9 @@ npm run check:ejs       # every EmulatorJS internal we touch still exists in web
 | Change | Files |
 |---|---|
 | Screens | `web/js/ui/*.js`, installed on one `ctx` from `web/js/app.js`; markup in `web/index.html`, styles in `web/css/app.css` |
-| Host emulator, netplay room, input delay, rematch, pad slots | `web/js/netplay-bridge.js` (EmulatorJS glue) |
+| Host side | `web/js/netplay-bridge.js` orchestrates: `ejs-adapter.js` (every EmulatorJS internal), `ejs-setup.js` (EJS_* globals, loader), `input-delay.js`, `roster.js`, `tsl-messaging.js`, `controller-bridge.js` |
 | ROM-free guest / spectator | `web/js/guest-client.js` (speaks the netplay protocol directly) |
-| Pure rules, unit-tested | `web/js/match-logic.js` (Player 2, delay queue), `web/js/pad-logic.js` (controllers), `web/js/zipcore.js` (zips; shared with the server) |
+| Pure rules, unit-tested | `web/js/match-logic.js` (Player 2, delay queue, lag estimates, auto delay, spectator caps), `web/js/roster.js`, `web/js/tsl-messaging.js`, `web/js/pad-logic.js` (controllers), `web/js/zipcore.js` (zips; shared with the server) |
 | Stream tuning, peer stats | `web/js/netplay-tuning.js` (wraps browser WebRTC APIs; never forks EmulatorJS) |
 | Matrix transport | `web/js/matrix-lobby.js`; lobby UI in `web/js/ui/matrix-ui.js` |
 | Server | `server/serve.js` (static, `/config.json`, `/status.json`, packaged ROMs), `server/romsets.js`, `server/log.js` |
@@ -45,7 +45,7 @@ python3 scripts/romset.py add "FinalBurn Neo (ClrMame Pro XML, Arcade only).dat"
 
 ## Bumping EmulatorJS or the core
 
-Follow the checklist in [docs/emulatorjs-internals.md](docs/emulatorjs-internals.md). Short form: change `EJS_COMMIT` / `CORE_VERSION` in `scripts/fetch-emulatorjs.sh` **and** `deploy/Dockerfile.web`, fetch, `npm test` (the internals check must pass; when a pattern breaks, read the new source, adapt the code, update the pattern and the table), then the manual netplay matrix below. Bump the `?v=` cache suffix on every script tag in `web/index.html` whenever a script changes.
+`scripts/bump-ejs.sh <commit> [core-version]` does the mechanical part and prints the checklist from [docs/emulatorjs-internals.md](docs/emulatorjs-internals.md). By hand: change `EJS_COMMIT` / `CORE_VERSION` in `scripts/fetch-emulatorjs.sh` **and** `deploy/Dockerfile.web`, fetch, `npm test` (the internals check must pass; when a pattern breaks, read the new source, adapt the code, update the pattern and the table), then the manual netplay matrix below. Bump the `?v=` cache suffix on every script tag in `web/index.html` whenever a script changes.
 
 ## Manual verification before a release
 

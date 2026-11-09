@@ -8,6 +8,8 @@ COPY scripts/fetch-emulatorjs.sh ./scripts/
 ARG EJS_COMMIT=5a65bde5d3b47c75f22e90453c3c14c469411589
 ARG CORE_VERSION=4.2.3
 RUN EJS_COMMIT=$EJS_COMMIT CORE_VERSION=$CORE_VERSION ./scripts/fetch-emulatorjs.sh
+ARG GIT_COMMIT=
+ENV GIT_COMMIT=$GIT_COMMIT
 ENV PORT=8080
 EXPOSE 8080
 CMD ["node", "server/serve.js"]
