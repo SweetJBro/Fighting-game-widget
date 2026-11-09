@@ -37,6 +37,9 @@
   }
   function show(screen) {
     ["screen-rom", "screen-lobby", "screen-match"].forEach((id) => $(id).classList.toggle("hidden", id !== screen));
+    // Keyboard and screen-reader users land on the new screen's heading (match: the role badge).
+    const focus = { "screen-rom": "rom-heading", "screen-lobby": "lobby-title", "screen-match": "match-role" }[screen];
+    setTimeout(() => { try { $(focus).focus({ preventScroll: true }); } catch (_) {} }, 0);
   }
   function myName() {
     const v = ($("player-name").value || state.name || "").trim();
@@ -103,7 +106,16 @@
     return Math.max(0, Math.min(6, Number.isFinite(d) ? d : 2));
   }
   $("seats").value = String(seats());
-  $("seats").addEventListener("change", (e) => { try { localStorage.setItem(SEATS_KEY, e.target.value); } catch (_) {} });
+  /** "2 seats ≈ up to 12 Mbps upload": every viewer (opponent + each watcher) is one more encode at the direct bitrate. */
+  function renderSeatsHint() {
+    const n = seats();
+    const mbps = (Number(cfg.streamBitrateDirect) || 4000000) / 1e6;
+    const total = ((1 + n) * mbps).toFixed(mbps % 1 ? 1 : 0);
+    $("seats-hint").textContent = n === 0 ? "opponent only ≈ up to " + total + " Mbps upload" : n + " watcher" + (n > 1 ? "s" : "") + " ≈ up to " + total + " Mbps upload in all";
+    $("seats-hint").title = "Each viewer costs you one more video stream of up to " + mbps + " Mbps (STREAM_BITRATE_DIRECT). Fewer seats if your upload is small.";
+  }
+  renderSeatsHint();
+  $("seats").addEventListener("change", (e) => { try { localStorage.setItem(SEATS_KEY, e.target.value); } catch (_) {} renderSeatsHint(); });
   $("popout-pref").checked = popoutPref();
   $("popout-pref").addEventListener("change", (e) => { try { localStorage.setItem(POPOUT_KEY, e.target.checked ? "1" : "0"); } catch (_) {} });
   if (isolatedTab) $("popout-row").classList.add("hidden");

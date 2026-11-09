@@ -4,6 +4,7 @@ WORKDIR /src
 RUN cargo build --release
 
 FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*   # healthcheck
 COPY --from=build /src/target/release/rust-socket-server /usr/local/bin/netplay
 ENV PORT=4000
 EXPOSE 4000

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting Game Widget</title>
-  <link rel="stylesheet" href="css/app.css?v=31">
+  <link rel="stylesheet" href="css/app.css?v=32">
 </head>
 <body>
   <header class="topbar">
@@ -27,11 +27,11 @@
     <!-- ROM screen -->
     <section id="screen-rom" class="screen">
       <div class="card">
-        <h1 id="rom-heading">Bring your own ROM</h1>
+        <h1 id="rom-heading" tabindex="-1">Bring your own ROM</h1>
         <p id="rom-intro">
           Only the <strong>host</strong> of a match needs the game; people who join or watch need nothing.
-          To host <strong class="rom-game-name"></strong>, pick your own FBNeo romset, for example straight from
-          Fightcade's ROM folder. Files stay in this browser (IndexedDB) and are never uploaded anywhere.
+          To host <strong class="rom-game-name"></strong>, pick its files below, together or one after the other.
+          They stay in this browser (IndexedDB) and are never uploaded anywhere.
         </p>
         <p id="rom-intro-packaged" class="hidden">
           This server packages its owner's <strong class="rom-game-name"></strong> romset for
@@ -39,14 +39,8 @@
           set takes precedence and stays in this browser (IndexedDB).
         </p>
         <p class="hint" id="rom-accepted"></p>
-        <p class="hint" id="rom-merge-hint"></p>
-        <details id="rom-howto" class="howto">
-          <summary>How to get the files</summary>
-          <ol id="rom-howto-steps"></ol>
-          <p class="hint">Nothing is downloaded or uploaded by this page: it only reads the zips you pick and keeps them in this browser.</p>
-        </details>
         <div id="rom-msg" class="notice hidden"></div>
-        <label id="rom-drop" class="dropzone" for="rom-file">
+        <label id="rom-drop" class="dropzone" for="rom-file" tabindex="0" role="button" aria-label="Choose the game's zip files">
           <input id="rom-file" type="file" accept=".zip,application/zip" multiple>
           <span class="dropzone-title">Drop the zip(s) here or click to choose</span>
           <span id="rom-drop-status" class="dropzone-status"></span>
@@ -54,8 +48,10 @@
         </label>
         <div class="row">
           <button id="btn-rom-clear" class="btn btn-ghost btn-sm">Forget stored ROM</button>
+          <button id="btn-rom-download" class="btn btn-ghost btn-sm hidden" title="Save the stored set as one zip, ready to pick again on another browser or machine">Download zip</button>
           <button id="btn-rom-continue" class="btn btn-primary" disabled>Continue</button>
         </div>
+        <p id="rom-storage" class="hint storage-line"></p>
       </div>
     </section>
 
@@ -63,7 +59,7 @@
     <section id="screen-lobby" class="screen hidden">
       <div class="lobby-grid">
         <div class="card">
-          <h2 id="lobby-title">Lobby</h2>
+          <h2 id="lobby-title" tabindex="-1">Lobby</h2>
           <p id="lobby-subtitle" class="hint"></p>
 
           <div id="name-row" class="row">
@@ -79,6 +75,7 @@
             <label id="seats-wrap" class="delay" title="How many people can watch matches you host. Each watcher costs you one more video stream to upload.">
               Watch seats
               <select id="seats"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+              <span id="seats-hint" class="hint"></span>
             </label>
             <button id="btn-local" class="btn" title="Two players on this machine, one controller each. No netplay.">Local match</button>
           </div>
@@ -129,7 +126,7 @@
     <section id="screen-match" class="screen hidden">
       <div class="matchbar">
         <div class="matchbar-left">
-          <span class="badge" id="match-role">host</span>
+          <span class="badge role-badge" id="match-role" tabindex="-1">host</span>
           <span class="code" id="match-code"></span>
           <span id="match-status" class="status">starting…</span>
         </div>
@@ -156,7 +153,7 @@
         <button id="btn-rematch-accept" class="btn btn-primary btn-sm">Rematch</button>
         <button id="btn-rematch-dismiss" class="btn btn-ghost btn-sm">Not now</button>
       </div>
-      <div id="perf-warn" class="perfwarn hidden"></div>
+      <div id="perf-warn" class="perfwarn hidden"><span id="perf-warn-text"></span><button id="perf-warn-close" class="perfwarn-close" title="Hide this message for the rest of this session" aria-label="Dismiss">×</button></div>
       <div id="ejs-wrap">
         <div id="ejs"></div>
       </div>
@@ -184,20 +181,20 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/zipcore.js?v=31"></script>
-  <script src="js/games.js?v=31"></script>
-  <script src="js/config.js?v=31"></script>
-  <script src="js/romstore.js?v=31"></script>
-  <script src="js/netplay-tuning.js?v=31"></script>
-  <script src="js/match-logic.js?v=31"></script>
-  <script src="js/pad-logic.js?v=31"></script>
-  <script src="js/guest-client.js?v=31"></script>
-  <script src="js/netplay-bridge.js?v=31"></script>
-  <script src="js/matrix-lobby.js?v=31"></script>
-  <script src="js/ui/rom-screen.js?v=31"></script>
-  <script src="js/ui/matrix-ui.js?v=31"></script>
-  <script src="js/ui/match-screen.js?v=31"></script>
-  <script src="js/ui/pads-panel.js?v=31"></script>
-  <script src="js/app.js?v=31"></script>
+  <script src="js/zipcore.js?v=32"></script>
+  <script src="js/games.js?v=32"></script>
+  <script src="js/config.js?v=32"></script>
+  <script src="js/romstore.js?v=32"></script>
+  <script src="js/netplay-tuning.js?v=32"></script>
+  <script src="js/match-logic.js?v=32"></script>
+  <script src="js/pad-logic.js?v=32"></script>
+  <script src="js/guest-client.js?v=32"></script>
+  <script src="js/netplay-bridge.js?v=32"></script>
+  <script src="js/matrix-lobby.js?v=32"></script>
+  <script src="js/ui/rom-screen.js?v=32"></script>
+  <script src="js/ui/matrix-ui.js?v=32"></script>
+  <script src="js/ui/match-screen.js?v=32"></script>
+  <script src="js/ui/pads-panel.js?v=32"></script>
+  <script src="js/app.js?v=32"></script>
 </body>
 </html>

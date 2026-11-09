@@ -23,6 +23,7 @@
     <div class="card">
       <h2>Netplay server</h2>
       <p id="netplay" class="hint">checking…</p>
+      <p id="packaged" class="hint hidden"></p>
       <h3>Open rooms</h3>
       <table><thead><tr><th>Game</th><th>Rooms</th><th>Who</th></tr></thead><tbody id="rooms"></tbody></table>
       <p id="when" class="hint"></p>
@@ -35,6 +36,11 @@
         const n = document.getElementById("netplay");
         n.textContent = s.netplay.reachable ? "Reachable at " + s.netplay.url + " · " + s.netplay.ms + " ms from the web server" : "Unreachable at " + s.netplay.url + " (from the web server; NETPLAY_STATUS_URL sets where it looks)";
         n.className = "hint " + (s.netplay.reachable ? "q-good" : "q-poor");
+        const pk = document.getElementById("packaged");
+        if (s.packaged && s.packaged.enabled) {
+          pk.textContent = "PACKAGED_ROM=1: this server hands " + (s.packaged.files.length ? s.packaged.files.join(", ") : "no complete set yet") + " to anyone who can open the page. Keep this deployment private.";
+          pk.className = "hint q-poor";
+        } else pk.className = "hint hidden";
         const tb = document.getElementById("rooms"); tb.innerHTML = "";
         for (const g of s.games) {
           const tr = document.createElement("tr");

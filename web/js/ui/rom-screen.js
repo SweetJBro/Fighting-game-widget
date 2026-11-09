@@ -25,22 +25,22 @@ TSL.UI.romScreen = function install(ctx) {
     document.querySelectorAll(".rom-game-name").forEach((el) => { el.textContent = g.name; });
     $("rom-accepted").innerHTML = "";
     const acc = $("rom-accepted");
+    const pieces = [g.rom.file].concat(g.rom.parent ? [g.rom.parent + ".zip"] : [], g.bios ? [g.bios.file] : []);
     acc.append("Needs ");
-    const c1 = document.createElement("code"); c1.textContent = g.rom.file; acc.append(c1);
+    pieces.forEach((name, i) => {
+      if (i) acc.append(i === pieces.length - 1 ? " and " : ", ");
+      const c = document.createElement("code"); c.textContent = name; acc.append(c);
+    });
     if (g.rom.versionLabel) acc.append(" (" + g.rom.versionLabel + ")");
-    if (g.bios) { acc.append(" and the " + (g.bios.label || "BIOS") + " "); const c2 = document.createElement("code"); c2.textContent = g.bios.file; acc.append(c2); }
-    acc.append(". Every file is checked against FinalBurn Neo's list.");
-    $("rom-merge-hint").textContent = g.rom.parent
-      ? "From Fightcade: pick both " + g.rom.file + " and " + g.rom.parent + ".zip from its ROMs/fbneo folder (together, or one after the other). Fightcade keeps this game split across the two; the browser combines them for you."
-      : (g.bios ? "From Fightcade: pick " + g.rom.file + " and " + g.bios.file + " from its ROMs/fbneo folder." : "");
-
-    renderHowTo(g);
+    acc.append(".");
 
     const packagedOnly = !!(state.rom && state.rom.packaged);
     $("rom-heading").textContent = gameReady() && packagedOnly ? "Ready to play" : "Bring your own ROM";
     $("rom-intro").classList.toggle("hidden", packagedOnly);
     $("rom-intro-packaged").classList.toggle("hidden", !packagedOnly);
     $("btn-rom-clear").classList.toggle("hidden", !(state.rom && !state.rom.packaged));
+    $("btn-rom-download").classList.toggle("hidden", !(state.rom && !state.rom.packaged && state.rom.file));
+    renderStorage();
 
     const badge = $("rom-badge"), st = $("rom-drop-status"), bs = $("bios-status");
     if (state.rom) {
@@ -62,27 +62,36 @@ TSL.UI.romScreen = function install(ctx) {
     $("btn-rom-continue").textContent = state.pending ? "Continue to match" : "Continue";
     return ready;
   }
-  /** The collapsible "How to get the files" list: exact file names for this game. */
-  function renderHowTo(g) {
-    const ol = $("rom-howto-steps"); ol.innerHTML = "";
-    const step = (...parts) => {
-      const li = document.createElement("li");
-      for (const p of parts) {
-        if (typeof p === "string") li.append(p);
-        else { const c = document.createElement("code"); c.textContent = p.code; li.append(c); }
+  /** "Stored in this browser: 3 sets, 160 MB of 2.1 GB available · Forget all". */
+  async function renderStorage() {
+    const el = $("rom-storage"); el.innerHTML = "";
+    let list = [];
+    try { list = await TSL.RomStore.list(); } catch (_) {}
+    if (!list.length) { return; }
+    const mb = (n) => (n / 1048576).toFixed(n > 10485760 ? 0 : 1) + " MB";
+    const total = list.reduce((n, r) => n + (r.size || 0), 0);
+    let text = "Stored in this browser: " + list.length + " zip" + (list.length > 1 ? "s" : "") + ", " + mb(total);
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        const est = await navigator.storage.estimate();
+        if (est && est.quota) text += " of about " + (est.quota / 1073741824).toFixed(1) + " GB this browser allows";
       }
-      ol.appendChild(li);
-    };
-    const files = [{ code: g.rom.file }];
-    if (g.rom.parent) files.push(" and ", { code: g.rom.parent + ".zip" });
-    if (g.bios) files.push(" and ", { code: g.bios.file });
-    step("Install Fightcade and let it download ", g.name, " once (its channel does this when you first play).");
-    step("Open Fightcade's ROM folder, ", { code: "ROMs/fbneo" }, " (Linux Flatpak: ", { code: "~/.var/app/com.fightcade.Fightcade/data/ROMs/fbneo" }, "; Windows: the ", { code: "ROMs\\fbneo" }, " folder inside the Fightcade install).");
-    step("Pick ", ...files, " above, together or one after the other.");
-    if (g.rom.parent) step("Fightcade keeps this game split across those zips; the browser combines them into one full set here. Other dumps work too as long as every file matches FinalBurn Neo's list, which is what the check against the manifest confirms.");
-    else step("Any FinalBurn Neo set with the same files works; the check against the manifest confirms each one.");
-    if (g.rom.versionLabel) step("Only this set is accepted: ", g.rom.versionLabel, ". A different revision is reported as missing files instead of booting to a black screen.");
+    } catch (_) {}
+    el.append(text + ". ");
+    const b = document.createElement("button"); b.className = "btn btn-ghost btn-sm"; b.textContent = "Forget all stored ROMs";
+    b.title = list.map((r) => r.name).join(", ");
+    b.onclick = async () => { await TSL.RomStore.clearAll(); $("rom-msg").classList.add("hidden"); await refreshRom(); toast("All stored ROMs forgotten."); };
+    el.appendChild(b);
   }
+  $("btn-rom-download").addEventListener("click", () => {
+    if (!state.rom || !state.rom.file) return;
+    const url = URL.createObjectURL(state.rom.file);
+    const a = document.createElement("a"); a.href = url; a.download = state.rom.name || state.game.rom.file;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  });
+  // Keyboard: the drop zone is a button too.
+  $("rom-drop").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("rom-file").click(); } });
   async function takeRomFiles(files) {
     if (!files.length) return;
     const msg = $("rom-msg");

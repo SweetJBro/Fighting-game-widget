@@ -9,10 +9,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install the pinned EmulatorJS (for the internals check)
-        run: scripts/fetch-emulatorjs.sh
       - name: Syntax check
-        run: for f in web/js/*.js server/*.js bot/*.mjs scripts/*.mjs; do node --check "$f"; done
+        run: for f in web/js/*.js web/js/ui/*.js server/*.js bot/*.mjs scripts/*.mjs; do node --check "$f"; done
+      - name: Game files against their schema
+        run: npm run check:games
+      - name: Cache the pinned EmulatorJS
+        id: ejs
+        uses: actions/cache@v4
+        with:
+          path: web/ejs
+          key: ejs-${{ hashFiles('scripts/fetch-emulatorjs.sh') }}
+      - name: Install the pinned EmulatorJS (for the internals check)
+        if: steps.ejs.outputs.cache-hit != 'true'
+        run: scripts/fetch-emulatorjs.sh
+      - name: EmulatorJS internals we rely on
+        run: npm run check:ejs
       - name: Tests
         run: npm test
       - name: romset.py self-check

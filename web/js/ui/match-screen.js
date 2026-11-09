@@ -25,7 +25,7 @@ TSL.UI.matchScreen = function install(ctx) {
     $("input-delay").value = String(TSL.Netplay.getInputDelay());
     lastRtt = null; renderDelayHint();
     show("screen-match");
-    $("match-role").textContent = { host: "P1 · host", guest: "P2 · guest", spectator: "watching", local: "local · 2 players" }[role];
+    setRole(role);
     $("btn-rematch").classList.add("hidden");
     $("btn-watch-link").classList.toggle("hidden", role !== "host");
     $("match-code").textContent = code;
@@ -56,7 +56,7 @@ TSL.UI.matchScreen = function install(ctx) {
         }
         else if (s.state === "watching") {
           setStatus("watching " + (s.host || "host") + (s.guest ? " vs " + s.guest : " (waiting for an opponent)"), "ok");
-          $("match-role").textContent = "watching";
+          setRole("spectator");
           $("btn-popout").classList.add("hidden");
           if (s.bumped && !state.bumpedNotified) { state.bumpedNotified = true; toast("This match already has an opponent, so you are watching."); }
         }
@@ -91,6 +91,32 @@ TSL.UI.matchScreen = function install(ctx) {
     el.textContent = "≈" + mine + " ms you" + (theirs === null ? "" : " · ≈" + theirs + " ms them");
   }
 
+  /** The role badge is the one persistent "what am I" indicator; the tab title repeats it. */
+  function setRole(role) {
+    const el = $("match-role");
+    el.textContent = { host: "You host · Player 1", guest: "You are Player 2", spectator: "You are watching", local: "Local · 2 players" }[role] || role;
+    el.className = "badge role-badge role-" + role;
+    const code = state.current ? state.current.code : "";
+    document.title = ({ host: "Hosting", guest: "Playing", spectator: "Watching", local: "Local match" }[role] || "") + (code && code !== "LOCAL" ? " " + code : "") + " · " + state.game.short;
+  }
+
+  // Dismissed banner kinds, for this tab's session only.
+  const DISMISS_KEY = "tsl.dismissedWarnings";
+  function dismissed() { try { return JSON.parse(sessionStorage.getItem(DISMISS_KEY) || "[]"); } catch (_) { return []; } }
+  let currentWarnKind = null;
+  $("perf-warn-close").addEventListener("click", () => {
+    if (!currentWarnKind) return;
+    try { sessionStorage.setItem(DISMISS_KEY, JSON.stringify([...new Set([...dismissed(), currentWarnKind])])); } catch (_) {}
+    $("perf-warn").classList.add("hidden");
+  });
+  function showWarn(kind, msg, isErr) {
+    const warn = $("perf-warn");
+    currentWarnKind = kind;
+    warn.classList.toggle("err", !!isErr);
+    $("perf-warn-text").textContent = msg || "";
+    warn.classList.toggle("hidden", !msg || dismissed().includes(kind));
+  }
+
   function renderStats(s) {
     lastRtt = s.link && s.link.rttMs !== null ? s.link.rttMs : null;
     renderDelayHint();
@@ -106,23 +132,33 @@ TSL.UI.matchScreen = function install(ctx) {
     el.querySelector(".txt").textContent = parts.join(" · ") || "no link yet";
     el.className = "netstats q-" + s.quality;
 
-    const warn = $("perf-warn");
-    let msg = "";
-    warn.classList.remove("err");
+    // One banner at a time, most serious first. Each kind can be dismissed for the session.
+    let kind = null, msg = "", err = false;
+    const relay = s.link && s.link.route === "relay";
     if (s.linkFailed) {
+      kind = "linkFailed"; err = true;
       msg = "Could not connect to the other player directly. One of you is behind a strict router or firewall. " +
         (s.usingTurn ? "The configured TURN relay did not help either; check its address and credentials." : "The server operator needs to add a TURN relay to ICE_SERVERS.");
-      warn.classList.add("err");
     } else if (s.role === "host" && s.slow) {
+      kind = "slow";
       msg = "Your emulator is running at " + s.emuFps + " fps (the game needs " + Math.round(state.game.performance.fps) + "). ";
       if (s.hidden) msg += "This tab is in the background; keep it in front.";
       else if (inIframe && !isolatedTab) msg += "Use Pop out to run it in its own tab and keep that tab in front.";
       else msg += "Close other heavy tabs or apps; " + state.game.hardware + " emulation needs a fast CPU core.";
     } else if (s.role !== "host" && s.link && s.link.streamFps !== null && s.link.streamFps < 40) {
-      msg = "The host's video is arriving at " + s.link.streamFps + " fps" + (s.link.route === "relay" ? " through a relay server" : "") + ". Expect choppy motion.";
+      kind = "guestFps";
+      msg = "The host's video is arriving at " + s.link.streamFps + " fps" + (relay ? " through a relay server" : "") + ". Expect choppy motion. " +
+        (relay ? "A relay adds lag both ways; " : "") + "the host could lower their watch seats, or the player with the better connection could host.";
+    } else if (s.link && s.quality === "poor") {
+      kind = "poorLink";
+      msg = "Ping to the other player is " + s.link.rttMs + " ms" + (relay ? ", through a relay server" : "") + ". " +
+        (relay ? "Relay routes are slow: a TURN server closer to both of you helps, or try again when a direct route is possible. " : "") +
+        "The player with the better connection should host" + (s.role === "host" ? "; fewer watch seats frees your upload." : ".");
+    } else if (relay) {
+      kind = "relay";
+      msg = "Connected through a TURN relay: expect a little more lag than a direct route and a lower-bitrate stream.";
     }
-    warn.textContent = msg;
-    warn.classList.toggle("hidden", !msg);
+    showWarn(kind, msg, err);
   }
 
   $("input-delay").addEventListener("change", (e) => {

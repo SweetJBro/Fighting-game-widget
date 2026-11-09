@@ -14,23 +14,23 @@ Emulation is [EmulatorJS](https://emulatorjs.org) running the FBNeo core in WebA
 * **Input delay (host).** The host plays with no network lag and the guest with a full round trip, so the host can delay their *own* inputs by 0-8 frames (default 3, picker in the match bar, remembered per browser) to even it out. It makes matches fairer; it cannot make the guest's side faster.
 * **60 fps stream.** EmulatorJS captures and encodes the host canvas at 30 fps. `web/js/netplay-tuning.js` raises both to `STREAM_FPS` (default 60), lifts the bitrate cap to match, keeps frame rate ahead of resolution under congestion, and sets the guest's jitter buffer target to 0.
 * **Pop out.** "Open matches in a new tab" (on by default inside a chat client) or the Pop out button runs the match in its own full-size tab. That tab is cross-origin isolated (`?isolate=1` gets COOP/COEP), so EmulatorJS also loads its threaded core; on CPS-3 that measured no faster, so the point is a tab you keep in front, outside the chat.
-* **Connection quality.** The top bar shows your round trip to the netplay server. Matrix challenges carry the challenger's server ping, so the accepter sees an estimate before accepting. During a match the bar shows emulator fps (host), peer ping, stream fps, direct or relay route and packet loss, with a coloured dot.
+* **Connection quality.** The top bar shows your round trip to the netplay server. Matrix challenges carry the challenger's server ping, so the accepter sees an estimate before accepting. During a match the bar shows emulator fps (host), peer ping, stream fps, direct or relay route and packet loss, with a coloured dot. When the link is poor, or goes through a TURN relay, a banner says what helps (the better-connected player hosting, fewer watch seats, a closer relay); every banner can be dismissed for the session.
 * **Performance warning.** If the host's emulator stays under the game's threshold (50 fps) for three seconds, a banner says so and why (background tab, chat iframe, or CPU).
 
 ## Rematch and spectators
 
 * **Rematch.** Once both players are in, the host has a Rematch button and the opponent has Ask for rematch, which shows the host a prompt. Room, connection and stream stay up. The widget saves the board's state at the first coin of the session, when the game is idle on its title or attract screen, so a rematch returns there instantly instead of rebooting the board; if no coin has gone in yet, it falls back to a reboot. Insert coin and press Start as usual. In a local match the same button is Restart.
-* **Spectators.** The host picks how many watch seats their matches have (0-6, **Watch seats** in the lobby, remembered per browser; the server default is `MAX_SPECTATORS`, 2). Watch from a **Watch** button in the open-matches list, from **Live matches** in the Matrix widget (accepted challenges between other members), from the host's **Watch link** button, or from the Fluxer bot's watch link. Spectators get the host's stream and their inputs are ignored. Each one costs the host another video encode and upload.
+* **Spectators.** The host picks how many watch seats their matches have (0-6, **Watch seats** in the lobby, remembered per browser; the server default is `MAX_SPECTATORS`, 2). Watch from a **Watch** button in the open-matches list, from **Live matches** in the Matrix widget (accepted challenges between other members), from the host's **Watch link** button, or from the Fluxer bot's watch link. Spectators get the host's stream and their inputs are ignored. Each one costs the host another video encode and upload; the seats picker says how much ("2 watchers ≈ up to 12 Mbps upload in all" at the default 4 Mbps per viewer).
 * **Who is Player 2.** The host decides. In the Matrix widget, a challenge to a named member, or an open challenge once someone accepts it, reserves Player 2 for that member's Matrix id; anyone else who joins watches. This prevents mix-ups, not impostors, since the id is what the joiner's widget reports. Otherwise the first joiner who asked to play gets Player 2, even if a spectator connected first. Someone who joins a match that already has an opponent is told they are watching.
 * **Save states.** EmulatorJS's own save and load paths work again; the published fbneo core lacks the export current EmulatorJS calls, so the bridge rebuilds it from the core's older one.
 
 ## Games
 
-| Game | Set | Board | Files the browser needs |
+| Game | Set | Board | Files to have (see [ROMs](#roms)) |
 |---|---|---|---|
-| Street Fighter III: 3rd Strike | `sfiii3nr1` (Japan 990512, NO CD) | CPS-3 | one merged `sfiii3nr1.zip` |
-| Super Street Fighter II Turbo | `ssf2xjr1` (Super SF II X, Japan 940223) | CPS-2 | one merged `ssf2xjr1.zip` |
-| The King of Fighters 2002 | `kof2002` | Neo Geo | `kof2002.zip` + the `neogeo.zip` BIOS |
+| Street Fighter III: 3rd Strike | `sfiii3nr1` (Japan 990512, NO CD) | CPS-3 | `sfiii3nr1.zip`, `sfiii3.zip` |
+| Super Street Fighter II Turbo | `ssf2xjr1` (Super SF II X, Japan 940223) | CPS-2 | `ssf2xjr1.zip`, `ssf2t.zip` |
+| The King of Fighters 2002 | `kof2002` | Neo Geo | `kof2002.zip`, `neogeo.zip` |
 
 Pick the game in the top bar. Each game has its own stored ROM, its own room namespace on the netplay server (a 3rd Strike lobby never lists a KOF room), its own buttons and its own pinned core options. Matrix challenges carry the game, so the widget shows each challenge's game and asks for the right ROM before accepting. Links carry it as `?game=<id>`; aliases such as `3s`, `st` and `kof` work too.
 
@@ -44,22 +44,21 @@ python3 scripts/romset.py add "FinalBurn Neo (ClrMame Pro XML, Arcade only).dat"
 
 ## ROMs
 
-**Only the host needs the game.** People who join or watch run no emulator at all: their page answers the host's WebRTC connection, shows the host's video and audio, and sends their keyboard or controller input back (`web/js/guest-client.js`). They download no ROM and no emulator core.
+**Only the host needs the game.** People who join or watch run no emulator at all: their page shows the host's video and audio and sends their inputs back (`web/js/guest-client.js`). They download no ROM and no core. The repository ships no game data and downloads none.
 
-The repository ships no game data and downloads none. A host gets the game one of two ways:
+To host, have the game's FBNeo files and pick them on the ROM screen, together or one after the other:
 
-* **Pick it in the browser.** The ROM screen (it opens when you host without one) takes the game's files straight from Fightcade's `ROMs/fbneo` folder and keeps them in this browser's IndexedDB; they are never uploaded. Fightcade keeps some games split from a parent set: 3rd Strike is `sfiii3nr1.zip` + `sfiii3.zip`, Super Turbo is `ssf2xjr1.zip` + `ssf2t.zip`, KOF 2002 is `kof2002.zip` + the `neogeo.zip` BIOS. Pick both files, together or one after the other; the browser combines them into the full set. The ROM screen's **How to get the files** lists the exact names and Fightcade folder for the selected game. Every file is checked against FinalBurn Neo's list, so a wrong revision gets a clear message instead of a black screen.
-* **Packaged (personal use).** Start the web server with `PACKAGED_ROM=1` and `ROMS_DIR` pointing at a folder of sets, which can be Fightcade's own `ROMs/fbneo` folder as it is (`scripts/dev.sh` serves `roms/` next to this README by default). The server checks each game's set, combines split pairs in memory, serves complete sets under versioned paths (`roms/v<mtime>/<file>`) and advertises them in `/config.json`; incomplete sets are skipped. A set stored in the browser still wins. Serving is opt-in so a folder of ROMs is never published by accident; it is **not** copied into the Docker image (mount it at `/app/roms` and set `PACKAGED_ROM=1`). Whoever can open the page can download the files, so keep a packaged deployment private, and use `HOST=127.0.0.1` to keep a dev server off the LAN.
+| Game | Files to pick |
+|---|---|
+| Street Fighter III: 3rd Strike | `sfiii3nr1.zip` and `sfiii3.zip` |
+| Super Street Fighter II Turbo | `ssf2xjr1.zip` and `ssf2t.zip` |
+| The King of Fighters 2002 | `kof2002.zip` and `neogeo.zip` |
 
-**Why combining at all?** Fightcade itself does not need it: its FinalBurn Neo reads a clone and its parent as two zips. The browser build of FBNeo inside EmulatorJS cannot (EmulatorJS unpacks a parent zip into loose files that FBNeo ignores), so the clone's files and the parent's shared files have to be in one zip. The browser and the server do that automatically by copying the compressed files into a new zip; nothing on disk changes.
+That is all. The ROM screen opens when you host without the game (or from **ROM** in the top bar), says which file it still needs after the first pick, and keeps the set in this browser's IndexedDB; nothing is uploaded. The screen shows how much is stored and what the browser allows, with **Forget all stored ROMs**; **Download zip** saves a stored set as one file to carry to another browser; a full disk gets a plain message instead of a silent failure. Every file is checked against FinalBurn Neo's list, so a wrong revision gets a clear message instead of a black screen. These are the same sets Fightcade runs, so a Fightcade install has them in its `ROMs/fbneo` folder; any other FBNeo dump of the same set works too.
 
-`scripts/romset.py` does the same from the command line (`merge`, `verify`, `bios`), for building a `roms/` folder by hand:
+**For operators.** The page can also serve a set to every visitor: start the web server with `PACKAGED_ROM=1` and `ROMS_DIR` pointing at a folder of sets, which can be Fightcade's `ROMs/fbneo` folder as it is (`scripts/dev.sh` serves `roms/` next to this README by default). Complete sets are served under versioned paths (`roms/v<mtime>/<file>`) and advertised in `/config.json`; incomplete ones are skipped; a set stored in the browser still wins. Serving is opt-in so a folder of ROMs is never published by accident, and it is **not** copied into the Docker image (mount it at `/app/roms`). Whoever can open the page can download the files, so keep a packaged deployment private, and use `HOST=127.0.0.1` to keep a dev server off the LAN.
 
-```bash
-FC=~/.var/app/com.fightcade.Fightcade/data/ROMs/fbneo
-python3 scripts/romset.py merge sfiii3nr1 $FC/sfiii3nr1.zip $FC/sfiii3.zip
-python3 scripts/romset.py verify kof2002 $FC/kof2002.zip
-```
+Under the hood, like Fightcade, the widget reads a game that is split across two zips (a clone and its parent, which is how Fightcade stores 3rd Strike and Super Turbo); the browser build of FBNeo can only load one zip, so the page and the server combine the pair into one before the emulator sees it. `scripts/romset.py` does the same from the command line (`merge`, `verify`, `bios`), for example to build a `roms/` folder by hand. Players never need it.
 
 ### Same versions as Fightcade
 
@@ -91,6 +90,7 @@ scripts/          netplay-server.sh (build + run the official EmulatorJS netplay
                   check-ejs-internals.mjs (every EmulatorJS internal we touch still exists), validate-games.mjs
 test/             `npm test`: zip check/assembly, Player 2 roster, delay queue, ROM store, packaged sets, game files, internals
 docs/             ROADMAP.md, TROUBLESHOOTING.md, emulatorjs-internals.md, game-adapter.d.ts (game file format)
+CONTRIBUTING.md   where things live, adding a game, bumping EmulatorJS, the manual verification matrix
 roms/             git-ignored; game and BIOS zips here are served for personal use (see ROMs)
 deploy/           Dockerfiles, docker-compose.yml, Caddyfile (TLS for two hostnames)
 ```
@@ -124,7 +124,7 @@ Requirements: Node 22+, Rust toolchain (for the netplay server), a modern browse
 scripts/dev.sh
 ```
 
-That starts the netplay server on `:4000` and the lobby on <http://localhost:8080>. Open two browser profiles (or two machines on the LAN using your LAN IP), load the ROM in each, host in one and join in the other.
+That starts the netplay server on `:4000` and the lobby on <http://localhost:8080>. Open two browser profiles (or two machines on the LAN using your LAN IP), pick the game's files in the hosting one (see [ROMs](#roms)), host there and join from the other; the joiner needs no ROM.
 
 Netplay needs a secure context for WebRTC and for the Matrix iframe: `localhost` counts, anything else needs HTTPS.
 
@@ -134,7 +134,7 @@ Netplay needs a secure context for WebRTC and for the Matrix iframe: `localhost`
 
 1. Point two DNS names at the box: one for the lobby (`LOBBY_HOST`), one for the netplay server (`NETPLAY_HOST`). The netplay server must be its own origin, not a sub-path, because the EmulatorJS client treats a path as a socket.io namespace.
 2. `cp .env.example .env` and fill it in. Add a TURN server to `ICE_SERVERS` if players sit behind strict NATs.
-3. `cd deploy && docker compose up -d --build` (add `--profile fluxer` to run the bot).
+3. `cd deploy && docker compose up -d --build` (add `--profile fluxer` to run the bot, `--profile turn` for the bundled coturn relay; see `.env.example` for its `TURN_*` settings and the matching `ICE_SERVERS`). The web and netplay containers have health checks; `https://<LOBBY_HOST>/status.html` shows netplay reachability, open rooms and a warning when `PACKAGED_ROM=1`.
 
 EmulatorJS is pinned. `scripts/fetch-emulatorjs.sh` installs EmulatorJS at a fixed git commit plus the fbneo core from npm `@emulatorjs/core-fbneo@4.2.3` into `web/ejs/` (git-ignored), and the server uses it automatically; the web Docker image runs the script at build time. A git commit rather than an npm release is required because `@emulatorjs/emulatorjs@4.2.3`, the newest release, still carries the old netplay client that cannot talk to the current netplay server. Without the pinned copy the page falls back to the moving `https://cdn.emulatorjs.org/latest/data/`. Bump `EJS_COMMIT` in the script and the Dockerfile together, and retest netplay when you do.
 
@@ -166,7 +166,7 @@ In Element (or any client with widget support), in the room:
 /addwidget https://3s.example.com/?userId=$matrix_user_id&displayName=$matrix_display_name&roomId=$matrix_room_id
 ```
 
-The client substitutes the `$matrix_*` templates and appends `widgetId`/`parentUrl`; the page detects that and switches to widget mode. On first load the client asks you to approve three capabilities: send and receive `app.thirdstrike.lobby` room events, and read `m.room.member` state (to list who is in the room). Challenges are ordinary room events, so they survive reloads and other members' clients see them when they open the widget.
+The client substitutes the `$matrix_*` templates and appends `widgetId`/`parentUrl`; the page detects that and switches to widget mode. On first load the client asks you to approve three capabilities: send and receive `app.thirdstrike.lobby` room events, and read `m.room.member` state (to list who is in the room). Challenges are ordinary room events, so they survive reloads and other members' clients see them when they open the widget. The event type name predates multi-game and is kept; the content carries `v: 2` (with `game`) and widgets read events without it as 3rd Strike.
 
 Hosting the widget yourself is required: the page must be served with a `Content-Security-Policy: frame-ancestors` that allows your Matrix client (`server/serve.js` sends `frame-ancestors *`).
 
@@ -178,7 +178,7 @@ Hosting the widget yourself is required: the page must be served with a `Content
 
 1. Create an application in Fluxer, add a bot, copy the token (`<application_id>.<secret>`), invite the bot to your community with permission to read and send messages.
 2. `FLUXER_BOT_TOKEN=... LOBBY_URL=https://3s.example.com/ node bot/fluxer-bot.mjs`
-3. In a channel: `!fight @rival` posts a host link for you and a join link for them. `!fight` alone posts an open challenge. Put a game first for another game: `!fight kof @rival`, `!fight st`. `!fight help` lists the games; the bot reads them from the lobby's `games/` folder at startup.
+3. In a channel: `!fight @rival` posts a host link for you and a join link for them. `!fight` alone posts an open challenge. Put a game first for another game: `!fight kof @rival`, `!fight st`. `!fight watch RYU-7F3K` (or `!watch RYU-7F3K`) posts a watch link for a match code. `!fight status` (or `!status`) reads the lobby's `/status.json` and lists the open matches and whether the netplay server is up. `!fight help` (or `!help`) lists the commands and the games with their aliases; the bot reads the games from the lobby's `games/` folder at startup.
 
 The bot discovers the API and gateway from `https://fluxer.app/.well-known/fluxer`; set `FLUXER_INSTANCE` for a self-hosted instance. It relies on the `mentions` array of incoming messages and writes mentions as `<@user_id>`; if your instance renders those literally, adjust `post()` in the bot.
 

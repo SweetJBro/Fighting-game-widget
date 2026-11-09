@@ -5,11 +5,17 @@ dot and the **perf** banner say most of this in the page too.
 
 ## Hosting
 
+**The ROM screen asks for another file after I picked the game's zip**
+Some games are two zips: 3rd Strike is `sfiii3nr1.zip` and `sfiii3.zip`, Super
+Turbo is `ssf2xjr1.zip` and `ssf2t.zip`, KOF 2002 is `kof2002.zip` and
+`neogeo.zip`. Pick the one it names and you are done.
+
 **Black screen after "loading emulator…"**
 The core could not load the ROM. Open the ROM screen (top-bar **ROM**) and check
-the stored set: a wrong revision is reported as missing files. If the set is
-packaged by the server, the server log has a `packaged_incomplete` line naming
-what is missing. A reload clears a stuck EmulatorJS.
+the stored set: a wrong revision, or only one of the game's two zips, is
+reported as missing files. If the set is packaged by the server, the server log has a
+`packaged_incomplete` line naming what is missing. A reload clears a stuck
+EmulatorJS.
 
 **Black screen and the region warning for several seconds after a rematch**
 Normal when no title-screen state had been captured yet (nobody had inserted a
@@ -145,6 +151,13 @@ the host's stick goes through EmulatorJS's own analog handling.
 **`/config.json` lists no packaged ROM**
 `PACKAGED_ROM=1` is not set, or `ROMS_DIR` has no complete set. With
 `LOG_FORMAT=text` the start-up log names each skipped set and its missing files.
+
+**Players say the ROM screen takes only one zip and 3rd Strike / Super Turbo never load**
+The deployment runs a page build from before November 2026, which knew nothing
+about Fightcade's two-zip games. Redeploy from `main`. Until then a player can
+build the single zip the old page wants with
+`python3 scripts/romset.py merge sfiii3nr1 sfiii3nr1.zip sfiii3.zip` (and
+`ssf2xjr1` with `ssf2t.zip`) and pick that.
 
 **Logs**
 `server/serve.js` writes one JSON object per line (`event`, plus fields), or

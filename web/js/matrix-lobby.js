@@ -7,11 +7,15 @@
    before this file.
 
    Lobby traffic is plain room events of type TSL.MATRIX_EVENT_TYPE:
-     { kind:"challenge", id, code, from:{id,name}, to:userId|null }
-     { kind:"accept",    id, code, by:{id,name} }
-     { kind:"cancel",    id } */
+     { v:2, kind:"challenge", id, code, game, from:{id,name,ping}, to:userId|null }
+     { v:2, kind:"accept",    id, code, game, by:{id,name} }
+     { v:2, kind:"cancel",    id }
+   The type name predates multi-game and is kept for compatibility with widgets
+   already in rooms. `v` is the content format: 1 (absent) = single game, 3rd
+   Strike implied; 2 = `game` present. Readers ignore fields they do not know. */
 window.TSL = window.TSL || {};
 TSL.MATRIX_EVENT_TYPE = "app.thirdstrike.lobby";
+TSL.MATRIX_EVENT_VERSION = 2;
 
 /** The browser bundle registers window.mxwidgets as a lazy module loader
     (a function returning the exports), so unwrap it. */
@@ -92,5 +96,5 @@ TSL.MatrixLobby = class MatrixLobby {
     } catch (_) { return []; }
   }
 
-  send(content) { return this.api.sendRoomEvent(this.eventType, content); }
+  send(content) { return this.api.sendRoomEvent(this.eventType, Object.assign({ v: TSL.MATRIX_EVENT_VERSION }, content)); }
 };

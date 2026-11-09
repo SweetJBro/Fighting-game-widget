@@ -167,18 +167,22 @@ input[readonly] { color: var(--muted); }
 .guest-video { width: 100%; height: 100%; max-height: calc(100vh - 120px); object-fit: contain; background: #000; }
 .guest-unmute { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); }
 
-/* ROM how-to (collapsed by default) and the lag estimate next to the delay picker */
-/* Controller panel: activity dot, layout warning */
-#pad-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.pad-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--border); flex: none; transition: background 80ms; }
-.pad-dot.on { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 6px var(--ok); }
-.pad-name { font-weight: 600; }
-.pad-warn { font-size: 12px; color: #ffd28a; background: #3a2a10; border: 1px solid #6b4a14; border-radius: 4px; padding: 1px 6px; }
-#pad-list .meta { color: var(--muted); font-size: 13px; flex: 1; }
-.pad-help { margin-top: 10px; }
-.howto { margin-top: 12px; font-size: 14px; color: var(--muted); }
-.howto summary { cursor: pointer; color: var(--text); font-weight: 600; }
-.howto ol { margin: 8px 0 4px 20px; padding: 0; }
-.howto li { margin: 4px 0; }
-.howto code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+/* Lag estimate next to the delay picker */
 .delay-hint { font-size: 12px; opacity: 0.85; white-space: nowrap; }
+
+/* Role badge in the match bar: the one thing that always says what you are */
+.role-badge { font-weight: 700; }
+.role-badge.role-host { background: #1f3a2a; color: #9be7b6; border-color: #2f7a4b; }
+.role-badge.role-guest { background: #1f2a3a; color: #9fc6ff; border-color: #2f5a8a; }
+.role-badge.role-spectator { background: #2a2a2a; color: #cfcfcf; border-color: #555; }
+.role-badge.role-local { background: #3a2a10; color: #ffd28a; border-color: #6b4a14; }
+/* Dismissible performance / connection banner */
+.perfwarn { display: flex; align-items: center; gap: 10px; }
+.perfwarn span { flex: 1; }
+.perfwarn-close { background: none; border: 0; color: inherit; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; opacity: 0.8; }
+.perfwarn-close:hover { opacity: 1; }
+/* Keyboard focus */
+.dropzone:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+h1:focus, h2:focus, .role-badge:focus { outline: none; }
+.storage-line { margin-top: 10px; }
+#seats-hint { margin-left: 6px; }

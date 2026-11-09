@@ -16,11 +16,40 @@ services:
       INPUT_DELAY_DEFAULT: ${INPUT_DELAY_DEFAULT:-3}
       THREADS: ${THREADS:-1}
       MAX_SPECTATORS: ${MAX_SPECTATORS:-2}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
   netplay:
     build: { context: .., dockerfile: deploy/Dockerfile.netplay }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/list?domain=health&game_id=0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
+
+  # TURN relay for players behind strict NATs: docker compose --profile turn up -d
+  # Needs host networking for the UDP relay range. Fill TURN_* in ../.env and point
+  # ICE_SERVERS at it (see ../.env.example). Long-term credentials: one shared
+  # user/password, which /config.json hands to every visitor; use the
+  # --use-auth-secret variant (TURN_SECRET) with short-lived credentials if that matters.
+  turn:
+    image: coturn/coturn:4
+    network_mode: host
+    command: >
+      turnserver -n --log-file=stdout
+      --listening-port=${TURN_PORT:-3478}
+      --realm=${TURN_REALM:-${NETPLAY_HOST}}
+      --external-ip=${TURN_PUBLIC_IP}
+      --lt-cred-mech --user=${TURN_USER}:${TURN_PASSWORD}
+      --min-port=${TURN_MIN_PORT:-49160} --max-port=${TURN_MAX_PORT:-49200}
+      --fingerprint --no-cli --no-tls --no-dtls --no-multicast-peers
+    restart: unless-stopped
+    profiles: ["turn"]
 
   bot:
     build: { context: .., dockerfile: deploy/Dockerfile.bot }

@@ -90,7 +90,7 @@ From a review of architecture, tests, UX, ops and docs. Everything the host-stre
 | `app.js` split | 690 lines to 283, plus `web/js/ui/` (rom-screen, matrix-ui, match-screen, pads-panel), modules installed on one shared `ctx`; `netplay-bridge.js` lost its inline roster and queue code |
 | EmulatorJS internals documented and checked | [`emulatorjs-internals.md`](emulatorjs-internals.md): every surface we touch, where and why, plus the bump checklist; `scripts/check-ejs-internals.mjs` fails `npm test` when one disappears |
 | Game file validator | `scripts/validate-games.mjs` (schema, unique netplayIds, key and pad collisions, CRC format); `romset.py add` runs it |
-| ROM onboarding | ROM screen: collapsible "How to get the files" with the exact zip names, Fightcade's folder per OS, and what the manifest check does |
+| ROM onboarding | ROM screen names every zip the game needs (e.g. `sfiii3nr1.zip` and `sfiii3.zip`) and the Fightcade folder to pick them from; a how-to list was tried and removed as noise |
 | Lag explanation | Next to the host's delay picker: "≈50 ms you · ≈90 ms them" (delay in frames vs. peer round trip plus a video frame each way) |
 | Server observability | JSON-lines log (`LOG_FORMAT=text` for humans): sets assembled or skipped, ROMs served, 404s, failures. `/status.json` and `status.html`: netplay reachability from the web server and open rooms per game |
 | Packaged ROM hygiene | `Content-Disposition: attachment`, `nosniff`, `noindex`; only advertised files are ever served |
@@ -110,6 +110,20 @@ From a review of architecture, tests, UX, ops and docs. Everything the host-stre
 
 Not done: the optional `netplay-bridge.js` split. The pad rules moved out into `pad-logic.js`; the EmulatorJS glue (apply, assign, reset) stayed in the bridge next to the emulator it drives.
 
+### Review pass (November 2026)
+
+| Task | Result |
+|---|---|
+| Spectator bandwidth | Seats picker says "N watchers ≈ up to X Mbps upload in all" from `STREAM_BITRATE_DIRECT` |
+| Connection advice | Banner kinds: no route (TURN), slow host, choppy guest video, poor ping, relay in use; each names what helps and can be dismissed for the session |
+| TURN | `docker compose --profile turn` runs coturn (host networking); `.env.example` has the `TURN_*` block and matching `ICE_SERVERS` |
+| Storage | ROM screen: stored total vs browser quota, **Forget all stored ROMs**, **Download zip** of a stored set; quota-exceeded becomes a plain message and the picked pieces stay for a retry |
+| Fluxer bot | `!fight watch CODE` / `!watch`, `!fight status` / `!status` from `/status.json`, help with every game and alias; 3 tests |
+| UX | Role badge reads "You host · Player 1" / "You are Player 2" / "You are watching" with a colour per role and the tab title repeats it; headings take focus on screen change; the drop zone is keyboard-operable |
+| Matrix events | Content carries `v: 2`; type name kept for rooms that already have the widget |
+| Ops | Health checks for web and netplay; status page warns when `PACKAGED_ROM=1`; CI caches the EmulatorJS pin and fails fast on schema and internals |
+| Docs | `CONTRIBUTING.md`: where things live, adding a game, bumping EmulatorJS, manual verification matrix |
+
 ## Next
 
 Roughly by impact over effort.
@@ -118,12 +132,8 @@ Roughly by impact over effort.
 |---|---|---|
 | Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3 and the 60 fps stream on a home uplink; measure real guest lag against the in-page estimate. Element's widget iframe sandbox includes `allow-popups allow-popups-to-escape-sandbox`, so pop-out should work there. Also: strict NAT + TURN, several spectators, rematch with several concurrent joiners |
 | Split `netplay-bridge.js` further | M | Still ~520 lines: EmulatorJS lifecycle, pad remapping, rematch/save-state and the message hooks could each be a file. Needs a netplay retest, so do it with the two-machine test |
-| Spectator bandwidth and TURN guidance | S | "2 watch seats ≈ up to +8 Mbps upload" next to the seats picker; a recommended action when quality is poor (pop out, swap hosts, relay in use); a `docker-compose` profile with coturn |
-| Storage management | S | "Clear all stored ROMs" plus total IndexedDB usage; graceful quota-exceeded message; offer to download the combined zip after a merge |
-| Fluxer bot polish | S | `!watch`, `!status` (from `/status.json`), a help text listing games and aliases |
 | Performance mode | M | Drop stream resolution or fps when the host is under the threshold, if `setParameters` allows it without renegotiation |
-| Accessibility and polish | S | Keyboard navigation through lobby and ROM picker, focus management on match open/close, dismissible performance banner remembered for the session |
-| Matrix event type | S | `app.thirdstrike.lobby` predates multi-game; keep it for compatibility and add a `v` field, or add a generic type alongside |
+| Accessibility | S | Full keyboard pass through lobby and match bar with visible focus everywhere; screen-reader labels on the match bar stats |
 | More games | S each | One JSON file per FBNeo arcade game: `romset.py add DAT SET`, then check buttons and region DIP |
 | Optional error reporting | S | Behind a flag: stack, game, browser, role, logged structured or posted to an endpoint |
 | Longer term | | Voice chat overlay, post-match GG prompt outside Matrix, mobile spectator view, controller overlay for streamers. Not planned: rollback (a different architecture), shipping ROMs, a frontend framework |

@@ -26,8 +26,21 @@ TSL.RomStore = (() => {
     }));
   }
   const getRec = (k) => tx("readonly", (s) => s.get(k));
-  const putRec = (k, v) => tx("readwrite", (s) => s.put(v, k));
   const delRec = (k) => tx("readwrite", (s) => s.delete(k));
+  const allKeys = () => tx("readonly", (s) => s.getAllKeys());
+  /** A full disk or a tight browser quota surfaces as QuotaExceededError; say so in plain words. */
+  async function putRec(k, v) {
+    try { return await tx("readwrite", (s) => s.put(v, k)); }
+    catch (e) {
+      const quota = e && (e.name === "QuotaExceededError" || /quota/i.test(e.message || ""));
+      if (!quota) throw e;
+      let free = "";
+      try { const est = await navigator.storage.estimate(); if (est && est.quota) free = " (" + ((est.quota - (est.usage || 0)) / 1048576).toFixed(0) + " MB free of " + (est.quota / 1073741824).toFixed(1) + " GB)"; } catch (_) {}
+      const err = new Error("Not enough browser storage to keep " + (v && v.name ? v.name : "this file") + free + ". Forget a stored ROM you no longer need, or free disk space, then pick it again.");
+      err.quota = true;
+      throw err;
+    }
+  }
 
   /** Normalise "kof2002 (1).zip" -> "kof2002.zip". */
   function canonicalName(fileName) {
@@ -105,7 +118,8 @@ TSL.RomStore = (() => {
         if (game.bios && name === game.bios.file) {
           const r = await TSL.ZipCheck.check(file, game.bios);
           if (!r.ok) { out.notes.push(describeMissing(r.missing, game.bios, "This " + game.bios.file)); continue; }
-          await putRec(biosKey(game.bios.id), { name, size: file.size, savedAt: Date.now(), blob: file });
+          try { await putRec(biosKey(game.bios.id), { name, size: file.size, savedAt: Date.now(), blob: file }); }
+          catch (e) { out.notes.push(e.message); continue; }
           out.stored.push(name);
           continue;
         }
@@ -126,9 +140,10 @@ TSL.RomStore = (() => {
 
       const merged = await TSL.ZipCheck.merge(parts, game.rom, game.rom.file);
       if (merged.blob) {
-        await putRec(romKey(game.id), { name: game.rom.file, size: merged.blob.size, savedAt: Date.now(), blob: merged.blob, manifestOk: true });
+        try { await putRec(romKey(game.id), { name: game.rom.file, size: merged.blob.size, savedAt: Date.now(), blob: merged.blob, manifestOk: true }); }
+        catch (e) { out.notes.push(e.message); return out; }   // pieces stay pending for a retry
         pending.delete(game.id);
-        out.stored.push(game.rom.file + (parts.length > 1 ? " (assembled from " + parts.map((f) => canonicalName(f.name)).join(" + ") + ")" : ""));
+        out.stored.push(parts.length > 1 ? parts.map((f) => canonicalName(f.name)).join(" + ") : game.rom.file);
         return out;
       }
       // Still incomplete: say which file is most likely missing.
@@ -139,6 +154,26 @@ TSL.RomStore = (() => {
 
     async clear(game) {
       await delRec(romKey(game.id));
+    },
+
+    /** Every stored zip: [{ key, name, size, savedAt }], games and BIOS alike. */
+    async list() {
+      await migrate();
+      const keys = (await allKeys()) || [];
+      const out = [];
+      for (const key of keys) {
+        if (typeof key !== "string" || !(key.startsWith("rom:") || key.startsWith("bios:"))) continue;
+        const rec = await getRec(key);
+        if (rec && rec.blob) out.push({ key, name: rec.name, size: rec.size || rec.blob.size, savedAt: rec.savedAt });
+      }
+      return out;
+    },
+
+    /** Remove every stored game and BIOS zip (and any half-picked pieces). */
+    async clearAll() {
+      const keys = (await allKeys()) || [];
+      for (const key of keys) if (typeof key === "string" && (key.startsWith("rom:") || key.startsWith("bios:"))) await delRec(key);
+      pending.clear();
     }
   };
 })();

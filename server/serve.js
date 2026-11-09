@@ -117,7 +117,9 @@ async function config() {
 /** Netplay server reachability and open rooms per game, for /status.json and status.html. */
 async function status(hostHeader) {
   const base = (process.env.NETPLAY_STATUS_URL || process.env.NETPLAY_URL || "http://127.0.0.1:4000").replace(/\/$/, "");
-  const out = { time: new Date().toISOString(), netplay: { url: base, reachable: false, ms: null }, games: [] };
+  const packagedFiles_ = process.env.PACKAGED_ROM === "1" ? Object.values(await packagedFiles()).map((f) => f.name) : [];
+  const out = { time: new Date().toISOString(), netplay: { url: base, reachable: false, ms: null },
+    packaged: { enabled: process.env.PACKAGED_ROM === "1", files: packagedFiles_ }, games: [] };
   for (const g of games()) {
     const entry = { id: g.id, name: g.name, rooms: null };
     try {

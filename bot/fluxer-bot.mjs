@@ -5,7 +5,9 @@
      !fight @someone      challenge a specific person; bot posts a host link for you and a join link for them
      !fight               open challenge; bot posts a host link for you and a join link for anyone
      !fight kof @someone  pick the game by id or alias (st, 3s, kof, ...); default is the lobby's default game
-     !fight help          lists the games
+     !fight watch CODE    watch link for a match code (also: !watch CODE, !watch kof CODE)
+     !fight status        netplay server reachability and the open matches, from the lobby's /status.json (also: !status)
+     !fight help          lists the commands and games with their aliases (also: !help when PREFIX is !fight)
 
    Env:
      FLUXER_BOT_TOKEN   bot token from your Fluxer application ("<application_id>.<secret>")
@@ -38,13 +40,56 @@ function findGame(word) {
   const w = String(word || "").toLowerCase();
   return GAMES.find((g) => g.id === w || (g.aliases || []).includes(w)) || null;
 }
-/** "kof <@123> extra" -> { game, help } ; mentions are handled separately. */
+const CODE_RE = /^[A-Z]+-[A-Z0-9]{4}$/i;
+const defaultGame = () => GAMES.find((g) => g.id === DEFAULT_GAME) || GAMES[0];
+/** "kof <@123> extra" -> { game } | { help } | { status } | { watch: CODE, game } | { unknown }; mentions are handled separately. */
 export function parseArgs(arg) {
   const words = arg.split(/\s+/).filter((w) => w && !/^<@!?\d+>$/.test(w));
+  if (!words.length) return { game: defaultGame() };
   if (words[0] === "help") return { help: true };
-  const game = words.length ? findGame(words[0]) : null;
-  if (words.length && !game) return { unknown: words[0] };
-  return { game: game || GAMES.find((g) => g.id === DEFAULT_GAME) || GAMES[0] };
+  if (words[0] === "status") return { status: true };
+  if (words[0] === "watch") {
+    const rest = words.slice(1);
+    const code = rest.find((w) => CODE_RE.test(w));
+    const gameWord = rest.find((w) => !CODE_RE.test(w));
+    const game = gameWord ? findGame(gameWord) : defaultGame();
+    if (gameWord && !game) return { unknown: gameWord };
+    if (!code) return { watchMissingCode: true };
+    return { watch: code.toUpperCase(), game };
+  }
+  const game = findGame(words[0]);
+  if (!game) return { unknown: words[0] };
+  return { game };
+}
+/** Bare "!watch ..." / "!status" / "!help" are the same as "!fight watch ..." etc. */
+export function commandText(text, prefix) {
+  const t = text.trim();
+  const lower = t.toLowerCase();
+  if (lower.startsWith(prefix)) return t.slice(prefix.length).trim();
+  for (const bare of ["!watch", "!status", "!help"]) {
+    if (lower === bare || lower.startsWith(bare + " ")) return bare.slice(1) + t.slice(bare.length);
+  }
+  return null;
+}
+export function helpText(prefix, games) {
+  const list = games.map((g) => "`" + g.id + "` " + g.name + (g.aliases && g.aliases.length ? " (" + g.aliases.map((a) => "`" + a + "`").join(", ") + ")" : "")).join("\n");
+  return "**Fighting Game Widget**\n" +
+    "`" + prefix + " @player` challenge someone · `" + prefix + "` open challenge · `" + prefix + " <game> @player` another game\n" +
+    "`" + prefix + " watch CODE` watch a match · `" + prefix + " status` who is playing · `" + prefix + " help` this\n" +
+    "Games (use the id or an alias):\n" + list + "\n" +
+    "Only the host needs the game's files; joining and watching need nothing.";
+}
+/** Reads the lobby's /status.json into one message. */
+export function statusText(st) {
+  const lines = [st.netplay.reachable ? "Netplay server: up (" + st.netplay.ms + " ms from the lobby)" : "Netplay server: **unreachable** from the lobby at " + st.netplay.url];
+  let any = false;
+  for (const g of st.games || []) {
+    if (!g.rooms || !g.rooms.length) continue;
+    any = true;
+    lines.push("**" + g.name + "**: " + g.rooms.map((r) => "`" + r.name + "` hosted by " + r.host + " (" + r.players + "/" + r.max + (r.players < 2 ? ", waiting for an opponent" : "") + ")").join(" · "));
+  }
+  if (!any) lines.push("No open matches right now. `" + PREFIX + "` to start one.");
+  return lines.join("\n");
 }
 
 const CHARS = ["RYU", "KEN", "CHUN", "YUN", "YANG", "MAKOTO", "DUDLEY", "URIEN", "AKUMA", "ORO", "IBUKI", "ELENA", "ALEX", "REMY", "NECRO", "HUGO", "SEAN", "TWELVE", "GILL"];
@@ -84,18 +129,24 @@ function post(channelId, content, userIds) {
 let me = null;
 async function onMessage(m) {
   if (!m || !m.content || (m.author && (m.author.bot || (me && m.author.id === me.id)))) return;
-  const text = m.content.trim();
-  if (!text.toLowerCase().startsWith(PREFIX)) return;
-  const arg = text.slice(PREFIX.length).trim().toLowerCase();
+  const arg = commandText(m.content, PREFIX);
+  if (arg === null) return;
   const author = m.author || {};
   const authorName = author.global_name || author.username || "someone";
 
-  const parsed = parseArgs(arg);
-  const games = GAMES.map((g) => `\`${(g.aliases && g.aliases[0]) || g.id}\` ${g.name}`).join(" · ");
+  const parsed = parseArgs(arg.toLowerCase());
   if (parsed.help || parsed.unknown) {
-    return post(m.channel_id, (parsed.unknown ? `Unknown game \`${parsed.unknown}\`.\n` : "") +
-      `**Fighting Game Widget**\n\`${PREFIX} @player\` challenge someone · \`${PREFIX}\` open challenge · \`${PREFIX} <game> @player\` another game.\n` +
-      `Games: ${games}\nOnly the host needs the game's ROM; joining and watching need nothing.`);
+    return post(m.channel_id, (parsed.unknown ? `Unknown game \`${parsed.unknown}\`.\n` : "") + helpText(PREFIX, GAMES));
+  }
+  if (parsed.watchMissingCode) return post(m.channel_id, `Which match? \`${PREFIX} watch RYU-7F3K\` (the code is in the challenge message).`);
+  if (parsed.watch) {
+    return post(m.channel_id, `👀 Watch **${parsed.watch}** (${parsed.game.name}): ${link(parsed.watch, "spectator", parsed.game)}`);
+  }
+  if (parsed.status) {
+    try {
+      const st = await (await fetch(new URL("status.json", LOBBY_URL), { signal: AbortSignal.timeout(5000) })).json();
+      return post(m.channel_id, statusText(st));
+    } catch (e) { return post(m.channel_id, "Could not read the lobby's status page: " + e.message); }
   }
   const game = parsed.game;
   const code = makeCode();
