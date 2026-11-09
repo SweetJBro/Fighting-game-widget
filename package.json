@@ -2,13 +2,18 @@
   "name": "fighting-game-matrix-widget",
   "version": "0.1.0",
   "private": true,
-  "description": "Fighting Game Matrix Widget: Street Fighter III 3rd Strike lobby as a Matrix room widget + Fluxer bot, browser netplay via EmulatorJS/FBNeo",
+  "description": "Fighting Game Matrix Widget: arcade fighting games (3rd Strike, Super Turbo, KOF 2002) in a Matrix room widget + Fluxer bot, browser netplay via EmulatorJS/FBNeo",
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "web": "node server/serve.js",
     "netplay": "scripts/netplay-server.sh",
     "bot": "node bot/fluxer-bot.mjs",
-    "dev": "scripts/dev.sh"
+    "dev": "scripts/dev.sh",
+    "test": "node --test test/",
+    "check:ejs": "node scripts/check-ejs-internals.mjs",
+    "check:games": "node scripts/validate-games.mjs"
   }
 }

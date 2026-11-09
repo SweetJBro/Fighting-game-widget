@@ -78,12 +78,41 @@ Findings along the way:
 | Chooser fix | The file input is reset after each pick, so picking the same file again works; results show in a message box instead of small red text |
 | Server reads Fightcade's folder | `ROMS_DIR` can be `ROMs/fbneo`: complete sets served, split pairs assembled in memory, incomplete sets skipped. Verified: 3rd Strike and Super Turbo assembled, Super Turbo hosted from it at 60 fps |
 
+### Backlog pass (November 2026)
+
+From a review of architecture, tests, UX, ops and docs. Everything the host-streaming design keeps: the clean ROM-free guest path and "only the host needs the ROM".
+
+| Task | Result |
+|---|---|
+| Automated tests (`npm test`, Node's runner, no dependencies) | 28 tests: zip central directory, manifest check (size + CRC, renamed ok, wrong revision not), clone + parent assembly byte-checked, encrypted entries skipped, zip64 rejected; Player 2 roster rules incl. Matrix reservation; input delay queue timing and ordering; ROM store file matching; packaged-set resolution on disk and in memory; every game file against its schema; every EmulatorJS internal against the pinned copy. CI workflow for GitHub and Forgejo Actions |
+| Shared zip code | `web/js/zipcore.js` is pure (reads through a callback) and is used by both the browser (`games.js`, Blob slices) and the server (`romsets.js`, file reads); the two copies are gone |
+| Pure match logic | `web/js/match-logic.js`: `decideRoster` and `DelayQueue`, used by `netplay-bridge.js` and the tests |
+| `app.js` split | 690 lines to 283, plus `web/js/ui/` (rom-screen, matrix-ui, match-screen, pads-panel), modules installed on one shared `ctx`; `netplay-bridge.js` lost its inline roster and queue code |
+| EmulatorJS internals documented and checked | [`emulatorjs-internals.md`](emulatorjs-internals.md): every surface we touch, where and why, plus the bump checklist; `scripts/check-ejs-internals.mjs` fails `npm test` when one disappears |
+| Game file validator | `scripts/validate-games.mjs` (schema, unique netplayIds, key and pad collisions, CRC format); `romset.py add` runs it |
+| ROM onboarding | ROM screen: collapsible "How to get the files" with the exact zip names, Fightcade's folder per OS, and what the manifest check does |
+| Lag explanation | Next to the host's delay picker: "≈50 ms you · ≈90 ms them" (delay in frames vs. peer round trip plus a video frame each way) |
+| Server observability | JSON-lines log (`LOG_FORMAT=text` for humans): sets assembled or skipped, ROMs served, 404s, failures. `/status.json` and `status.html`: netplay reachability from the web server and open rooms per game |
+| Packaged ROM hygiene | `Content-Disposition: attachment`, `nosniff`, `noindex`; only advertised files are ever served |
+| Docs | README: architecture diagram, full environment table, layout; [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) |
+
 ## Next
+
+Roughly by impact over effort.
 
 | Task | Size | Notes |
 |---|---|---|
-| Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3 and the 60 fps stream on a home uplink. Element's widget iframe sandbox includes `allow-popups allow-popups-to-escape-sandbox`, so pop-out should work there |
-| More games | S each | One JSON file per FBNeo arcade game: `romset.py manifest`, buttons, a new `netplayId` |
+| Two-machine test | S | Needs two people on separate connections. Confirms the default delay of 3 and the 60 fps stream on a home uplink; measure real guest lag against the in-page estimate. Element's widget iframe sandbox includes `allow-popups allow-popups-to-escape-sandbox`, so pop-out should work there. Also: strict NAT + TURN, several spectators, rematch with several concurrent joiners |
+| Split `netplay-bridge.js` further | M | Still ~520 lines: EmulatorJS lifecycle, pad remapping, rematch/save-state and the message hooks could each be a file. Needs a netplay retest, so do it with the two-machine test |
+| Spectator bandwidth and TURN guidance | S | "2 watch seats ≈ up to +8 Mbps upload" next to the seats picker; a recommended action when quality is poor (pop out, swap hosts, relay in use); a `docker-compose` profile with coturn |
+| Storage management | S | "Clear all stored ROMs" plus total IndexedDB usage; graceful quota-exceeded message; offer to download the combined zip after a merge |
+| Fluxer bot polish | S | `!watch`, `!status` (from `/status.json`), a help text listing games and aliases |
+| Performance mode | M | Drop stream resolution or fps when the host is under the threshold, if `setParameters` allows it without renegotiation |
+| Accessibility and polish | S | Keyboard navigation through lobby and ROM picker, focus management on match open/close, dismissible performance banner remembered for the session |
+| Matrix event type | S | `app.thirdstrike.lobby` predates multi-game; keep it for compatibility and add a `v` field, or add a generic type alongside |
+| More games | S each | One JSON file per FBNeo arcade game: `romset.py add DAT SET`, then check buttons and region DIP |
+| Optional error reporting | S | Behind a flag: stack, game, browser, role, logged structured or posted to an endpoint |
+| Longer term | | Voice chat overlay, post-match GG prompt outside Matrix, mobile spectator view, controller overlay for streamers. Not planned: rollback (a different architecture), shipping ROMs, a frontend framework |
 
 ## CPS-3 in WebAssembly: numbers and risks
 

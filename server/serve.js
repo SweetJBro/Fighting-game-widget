@@ -19,12 +19,16 @@
                      ROMs/fbneo folder works as is: split clone + parent pairs are checked and
                      assembled in memory; incomplete sets are not advertised.
    PACKAGED_ROM=1    serve and advertise those files (opt-in: off unless set, so a checkout with
-                     ROMs in roms/ never publishes them by accident) */
+                     ROMs in roms/ never publishes them by accident)
+   NETPLAY_STATUS_URL  where this server itself reaches the netplay server for /status.json
+                     (default NETPLAY_URL, else http://127.0.0.1:4000)
+   LOG_FORMAT=text   human-readable log lines instead of JSON lines */
 "use strict";
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const romsets = require("./romsets");
+const log = require("./log");
 
 const ROOT = path.resolve(__dirname, "..", "web");
 // Personal/private use: a merged sfiii3*.zip placed here is served at /roms/<name>
@@ -45,11 +49,11 @@ function games() {
   try {
     const idx = JSON.parse(fs.readFileSync(path.join(dir, "index.json"), "utf8"));
     return idx.games.map((id) => JSON.parse(fs.readFileSync(path.join(dir, id + ".json"), "utf8")));
-  } catch (e) { console.error("game registry:", e.message); return []; }
+  } catch (e) { log.error("game_registry", { message: e.message }); return []; }
 }
 
 /** Packaged files, keyed by lower-case file name: game sets and BIOS zips found in ROMS_DIR. */
-function packagedFiles() {
+async function packagedFiles() {
   if (process.env.PACKAGED_ROM !== "1") return {};
   const out = {};
   const add = (kind, id, name, r) => {
@@ -62,8 +66,12 @@ function packagedFiles() {
       etag: `"${r.size}-${v}"`, url: `roms/v${v}/${name}` };
   };
   for (const g of games()) {
-    try { add("rom", g.id, g.rom.file.toLowerCase(), romsets.resolveSet(ROMS_DIR, g)); } catch (e) { console.error("romset", g.id, e.message); }
-    if (g.bios) { try { add("bios", g.bios.id, g.bios.file.toLowerCase(), romsets.resolveBios(ROMS_DIR, g)); } catch (_) {} }
+    try { add("rom", g.id, g.rom.file.toLowerCase(), await romsets.resolveSet(ROMS_DIR, g)); }
+    catch (e) { log.error("romset", { game: g.id, message: e.message }); }
+    if (g.bios) {
+      try { add("bios", g.bios.id, g.bios.file.toLowerCase(), await romsets.resolveBios(ROMS_DIR, g)); }
+      catch (e) { log.error("bios", { game: g.id, message: e.message }); }
+    }
   }
   return out;
 }
@@ -75,16 +83,16 @@ function sendFile(res, file, headers) {
   const stream = fs.createReadStream(file);
   stream.on("open", () => { res.writeHead(200, headers); stream.pipe(res); });
   stream.on("error", (err) => {
-    console.error("send failed:", file, err.message);
+    log.error("send_failed", { file: path.basename(file), message: err.message });
     if (!res.headersSent) { res.writeHead(500); res.end("error"); } else res.destroy();
   });
   res.on("close", () => stream.destroy());   // client aborted or finished: release the fd
 }
 
-function config() {
+async function config() {
   const out = {};
   // { roms: { gameId: {name,url,size} }, bios: { biosId: {name,url,size} } }
-  const files = Object.values(packagedFiles());
+  const files = Object.values(await packagedFiles());
   if (files.length) {
     out.packaged = { roms: {}, bios: {} };
     for (const f of files) out.packaged[f.kind === "rom" ? "roms" : "bios"][f.id] = { name: f.name, url: f.url, size: f.size };
@@ -101,35 +109,63 @@ function config() {
   if (num("MAX_SPECTATORS") !== undefined) out.maxSpectators = num("MAX_SPECTATORS");
   if (process.env.PUBLIC_URL) out.publicUrl = process.env.PUBLIC_URL;
   if (process.env.ICE_SERVERS) {
-    try { out.iceServers = JSON.parse(process.env.ICE_SERVERS); } catch (e) { console.error("ICE_SERVERS is not valid JSON:", e.message); }
+    try { out.iceServers = JSON.parse(process.env.ICE_SERVERS); } catch (e) { log.error("ice_servers_invalid", { message: e.message }); }
+  }
+  return out;
+}
+
+/** Netplay server reachability and open rooms per game, for /status.json and status.html. */
+async function status(hostHeader) {
+  const base = (process.env.NETPLAY_STATUS_URL || process.env.NETPLAY_URL || "http://127.0.0.1:4000").replace(/\/$/, "");
+  const out = { time: new Date().toISOString(), netplay: { url: base, reachable: false, ms: null }, games: [] };
+  for (const g of games()) {
+    const entry = { id: g.id, name: g.name, rooms: null };
+    try {
+      const t0 = Date.now();
+      const q = new URLSearchParams({ domain: hostHeader || "", game_id: String(g.netplayId) });
+      const r = await fetch(base + "/list?" + q, { signal: AbortSignal.timeout(3000) });
+      const rooms = await r.json();
+      out.netplay.reachable = true;
+      out.netplay.ms = out.netplay.ms ?? Date.now() - t0;
+      entry.rooms = Object.values(rooms || {}).map((x) => ({ name: x.room_name, host: x.player_name, players: x.current, max: x.max }));
+    } catch (_) { /* unreachable: rooms stays null */ }
+    out.games.push(entry);
   }
   return out;
 }
 
 http.createServer((req, res) => {
-  try { handle(req, res); } catch (e) {
-    console.error(req.method, req.url, e.message);
+  handle(req, res).catch((e) => {
+    log.error("request_failed", { method: req.method, url: req.url, message: e.message });
     if (!res.headersSent) res.writeHead(500);
     res.end("error");
-  }
-}).listen(PORT, HOST, () => console.log(`3rd Strike Lobby web on http://${HOST}:${PORT} (config: ${JSON.stringify(config())})`));
+  });
+}).listen(PORT, HOST, async () => log.info("listening", { url: `http://${HOST}:${PORT}`, config: await config() }));
 
-function handle(req, res) {
+async function handle(req, res) {
   const url = new URL(req.url, "http://x");
   let p = decodeURIComponent(url.pathname);
   if (p === "/config.json") {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-    return res.end(JSON.stringify(config()));
+    return res.end(JSON.stringify(await config()));
   }
   if (p === "/healthz") { res.writeHead(200); return res.end("ok"); }
+  if (p === "/status.json") {
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    return res.end(JSON.stringify(await status(req.headers.host)));
+  }
   if (p.startsWith("/roms/")) {
     // Only advertised files are ever served, always by their on-disk path.
-    const rom = packagedFiles()[path.basename(p).toLowerCase()];
-    if (!rom) { res.writeHead(404); return res.end("not found"); }
+    const rom = (await packagedFiles())[path.basename(p).toLowerCase()];
+    if (!rom) { log.warn("rom_not_found", { path: p }); res.writeHead(404); return res.end("not found"); }
     const headers = {
       "content-type": "application/zip", "content-length": rom.size, "etag": rom.etag,
-      "last-modified": rom.mtime.toUTCString(), "cache-control": "private, max-age=86400"
+      "last-modified": rom.mtime.toUTCString(), "cache-control": "private, max-age=86400",
+      // A download, never rendered; never indexed if the deployment is reachable.
+      "content-disposition": `attachment; filename="${rom.name}"`,
+      "x-content-type-options": "nosniff", "x-robots-tag": "noindex, nofollow"
     };
+    if (req.method !== "HEAD") log.info("rom_served", { file: rom.name, assembled: !!rom.buffer, bytes: rom.size });
     if (req.headers["if-none-match"] === rom.etag) { res.writeHead(304, headers); return res.end(); }
     if (req.method === "HEAD") { res.writeHead(200, headers); return res.end(); }
     if (rom.buffer) { res.writeHead(200, headers); return res.end(rom.buffer); }   // assembled split set

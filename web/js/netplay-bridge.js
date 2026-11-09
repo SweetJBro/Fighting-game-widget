@@ -111,7 +111,7 @@ TSL.Netplay = (() => {
   const DELAY_KEY = "tsl.inputDelay";
   let inputDelay = readDelay();
   let frame = 0;                 // last core frame number seen (get_current_frame_count)
-  const queue = [];              // [{ at, player, index, value }]
+  const queue = new TSL.MatchLogic.DelayQueue();   // host's own presses, held inputDelay frames
   let rawSimulate = null;        // core's own simulate_input
   let tickRaf = 0;
   // Instant rematch: the board's state captured just before the first coin of
@@ -154,8 +154,7 @@ TSL.Netplay = (() => {
       if (hosting && player === 0 && inputDelay > 0) {
         frame = gm.getFrameNum();
         // Never let a later event overtake an earlier one (delay lowered mid-match).
-        const last = queue.length ? queue[queue.length - 1].at : 0;
-        queue.push({ at: Math.max(frame + inputDelay, last), player, index, value });
+        queue.push(frame, inputDelay, { player, index, value });
         return;
       }
       rawSimulate(player, index, value);
@@ -166,10 +165,7 @@ TSL.Netplay = (() => {
     // queued press lands within the frame it is due, give or take one.
     const tick = () => {
       frame = gm.getFrameNum();
-      while (queue.length && queue[0].at <= frame) {
-        const q = queue.shift();
-        rawSimulate(q.player, q.index, q.value);
-      }
+      for (const q of queue.due(frame)) rawSimulate(q.player, q.index, q.value);
       tickRaf = requestAnimationFrame(tick);
     };
     cancelAnimationFrame(tickRaf);
@@ -357,26 +353,8 @@ TSL.Netplay = (() => {
     const n = np();
     if (!n || !n.owner) return;
     const present = Object.values(n.players || {}).filter((p) => p.userid !== n.playerID);
-    const ids = present.map((p) => p.userid);
-    let guest = roster && ids.includes(roster.guest) ? roster.guest : null;
-    if (guest && expectedGuest && intents[guest] && intents[guest].matrixId !== expectedGuest) guest = null;
-    if (!guest) {
-      const first = present.find((p) => {
-        const it = intents[p.userid];
-        if (!it || it.intent !== "guest") return false;
-        return !expectedGuest || it.matrixId === expectedGuest;
-      });
-      guest = first ? first.userid : null;
-    }
-    const nameOf = (id) => {
-      const p = present.find((q) => q.userid === id);
-      return (intents[id] && intents[id].name) || (p && p.player_name) || "Player";
-    };
-    roster = {
-      host: n.playerID, hostName: opts.name,
-      guest, guestName: guest ? nameOf(guest) : null,
-      spectators: ids.filter((id) => id !== guest).map(nameOf)
-    };
+    const decided = TSL.MatchLogic.decideRoster({ present, intents, currentGuest: roster && roster.guest, expectedGuest });
+    roster = Object.assign({ host: n.playerID, hostName: opts.name }, decided);
     const json = JSON.stringify(roster);
     if (force || json !== lastRosterJson) { lastRosterJson = json; sendTsl({ roster }); }
   }
@@ -474,7 +452,7 @@ TSL.Netplay = (() => {
   return {
     getInputDelay() { return inputDelay; },
     /** For tests and the console: current frame and queued (delayed) presses. */
-    debugDelay() { return { frame, queued: queue.map((q) => ({ at: q.at, index: q.index, value: q.value })) }; },
+    debugDelay() { return { frame, queued: queue.items.map((q) => ({ at: q.at, index: q.index, value: q.value })) }; },
     setInputDelay(d) {
       inputDelay = Math.max(0, Math.min(8, Math.round(Number(d) || 0)));
       try { localStorage.setItem(DELAY_KEY, String(inputDelay)); } catch (_) {}
@@ -486,7 +464,7 @@ TSL.Netplay = (() => {
       const e = emu(), n = np();
       if (!e || !e.gameManager) return false;
       if (opts.role !== "local" && (!n || !n.owner)) return false;
-      queue.length = 0;
+      queue.clear();
       let how = "reboot";
       if (titleState) {
         try { e.gameManager.loadState(titleState); how = "instant"; } catch (_) { how = "reboot"; }
@@ -501,7 +479,7 @@ TSL.Netplay = (() => {
     requestRematch() { sendTsl({ rematch: "request", name: opts && opts.name }); },
     getRoster() { return roster; },
     /** Host: only this Matrix id may take Player 2 (null = first joiner who asks to play). */
-    setExpectedGuest(id) { expectedGuest = id || null; if (roster && roster.guest && intents[roster.guest] && intents[roster.guest].matrixId !== expectedGuest && expectedGuest) roster.guest = null; updateRoster(true); },
+    setExpectedGuest(id) { expectedGuest = id || null; updateRoster(true); },   // decideRoster drops a mismatching Player 2
     /** Live controllers: [{ index, id, player (-1 = none), standard }]. */
     pads,
     /** Make controller `index` drive `player` (0-based; -1 = none). Remembered by controller name. */

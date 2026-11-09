@@ -36,6 +36,16 @@ TSL.RomStore = (() => {
       .replace(/\s+/g, "");
   }
 
+  /** Pure: which of the game's files (own set, parent set) are not among the
+      picked file names. Used for "now also pick sfiii3.zip". */
+  function missingPieces(game, pickedNames) {
+    const have = new Set(pickedNames.map(canonicalName));
+    const need = [];
+    if (!have.has(game.rom.file)) need.push(game.rom.file);
+    if (game.rom.parent && !have.has(game.rom.parent + ".zip")) need.push(game.rom.parent + ".zip");
+    return need;
+  }
+
   function toFile(rec) {
     return rec && rec.blob ? { name: rec.name, size: rec.size, savedAt: rec.savedAt,
       file: new File([rec.blob], rec.name, { type: "application/zip" }) } : null;
@@ -62,6 +72,7 @@ TSL.RomStore = (() => {
 
   return {
     canonicalName,
+    missingPieces,
 
     /** Stored set for a game, or null. Drops records that no longer pass the manifest. */
     async get(game) {
@@ -121,9 +132,7 @@ TSL.RomStore = (() => {
         return out;
       }
       // Still incomplete: say which file is most likely missing.
-      const have = new Set(parts.map((f) => canonicalName(f.name)));
-      if (!have.has(game.rom.file)) out.need.push(game.rom.file);
-      if (game.rom.parent && !have.has(game.rom.parent + ".zip")) out.need.push(game.rom.parent + ".zip");
+      out.need.push(...missingPieces(game, parts.map((f) => f.name)));
       if (!out.need.length) out.notes.push("Still missing " + merged.missing.length + " of " + game.rom.members.length + " files (" + merged.missing.slice(0, 4).join(", ") + (merged.missing.length > 4 ? " ..." : "") + "). These zips may be a different revision than " + game.rom.file + ".");
       return out;
     },

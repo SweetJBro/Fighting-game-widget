@@ -157,7 +157,13 @@ def cmd_add(dat, name, opts):
     print(f"wrote {out} ({len(game['rom']['members'])} files"
           + (f" + {game['bios']['file']}" if "bios" in game else "")
           + f", layout {'neo' if game['hardware'] == 'Neo Geo' else 'six'}, netplayId {game['netplayId']}) and added it to index.json")
-    print("check: name/short/aliases, hardware, coreOpts (region DIP switches), then romset.py merge/verify and boot it")
+    import shutil as _sh, subprocess as _sp
+    if _sh.which("node"):
+        r = _sp.run(["node", os.path.join(ROOT, "scripts", "validate-games.mjs")], capture_output=True, text=True)
+        print((r.stdout + r.stderr).strip())
+        if r.returncode:
+            sys.exit("the new game file has problems (see above); fix them before using it")
+    print("check: name/short/aliases, hardware, coreOpts (region DIP switches), then pick its files on the ROM screen and boot it")
 
 
 # ---------- merge / verify ----------

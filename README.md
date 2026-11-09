@@ -48,7 +48,7 @@ python3 scripts/romset.py add "FinalBurn Neo (ClrMame Pro XML, Arcade only).dat"
 
 The repository ships no game data and downloads none. A host gets the game one of two ways:
 
-* **Pick it in the browser.** The ROM screen (it opens when you host without one) takes the game's files straight from Fightcade's `ROMs/fbneo` folder and keeps them in this browser's IndexedDB; they are never uploaded. Fightcade keeps some games split from a parent set: 3rd Strike is `sfiii3nr1.zip` + `sfiii3.zip`, Super Turbo is `ssf2xjr1.zip` + `ssf2t.zip`, KOF 2002 is `kof2002.zip` + the `neogeo.zip` BIOS. Pick both files, together or one after the other; the browser combines them into the full set. Every file is checked against FinalBurn Neo's list, so a wrong revision gets a clear message instead of a black screen.
+* **Pick it in the browser.** The ROM screen (it opens when you host without one) takes the game's files straight from Fightcade's `ROMs/fbneo` folder and keeps them in this browser's IndexedDB; they are never uploaded. Fightcade keeps some games split from a parent set: 3rd Strike is `sfiii3nr1.zip` + `sfiii3.zip`, Super Turbo is `ssf2xjr1.zip` + `ssf2t.zip`, KOF 2002 is `kof2002.zip` + the `neogeo.zip` BIOS. Pick both files, together or one after the other; the browser combines them into the full set. The ROM screen's **How to get the files** lists the exact names and Fightcade folder for the selected game. Every file is checked against FinalBurn Neo's list, so a wrong revision gets a clear message instead of a black screen.
 * **Packaged (personal use).** Start the web server with `PACKAGED_ROM=1` and `ROMS_DIR` pointing at a folder of sets, which can be Fightcade's own `ROMs/fbneo` folder as it is (`scripts/dev.sh` serves `roms/` next to this README by default). The server checks each game's set, combines split pairs in memory, serves complete sets under versioned paths (`roms/v<mtime>/<file>`) and advertises them in `/config.json`; incomplete sets are skipped. A set stored in the browser still wins. Serving is opt-in so a folder of ROMs is never published by accident; it is **not** copied into the Docker image (mount it at `/app/roms` and set `PACKAGED_ROM=1`). Whoever can open the page can download the files, so keep a packaged deployment private, and use `HOST=127.0.0.1` to keep a dev server off the LAN.
 
 **Why combining at all?** Fightcade itself does not need it: its FinalBurn Neo reads a clone and its parent as two zips. The browser build of FBNeo inside EmulatorJS cannot (EmulatorJS unpacks a parent zip into loose files that FBNeo ignores), so the clone's files and the parent's shared files have to be in one zip. The browser and the server do that automatically by copying the compressed files into a new zip; nothing on disk changes.
@@ -69,24 +69,51 @@ Fightcade's 3rd Strike is `sfiii3nr1` with Region = Japan and CPU = 100% (its `c
 
 ```
 web/              static lobby + player (vanilla JS, no build step)
-  js/netplay-bridge.js   drives EmulatorJS netplay programmatically (openRoom / joinRoom), host input delay, fps monitor
+  js/app.js              entry: config, game picker, standalone and link lobbies, boot
+  js/ui/                 screens: rom-screen, matrix-ui (challenges, live matches), match-screen, pads-panel
+  js/netplay-bridge.js   drives EmulatorJS netplay programmatically (openRoom / joinRoom), host input delay, rematch, fps monitor
+  js/match-logic.js      pure: who is Player 2 (decideRoster), the input DelayQueue; unit-tested
   js/guest-client.js     ROM-free guest/spectator: joins the room, shows the host's stream, sends inputs (no EmulatorJS)
   js/netplay-tuning.js   60 fps stream, bitrate, jitter buffer, peer stats (wraps browser WebRTC APIs, no EmulatorJS fork)
   js/matrix-lobby.js     matrix-widget-api transport, challenge events
-  js/games.js            game registry (web/games/*.json) and in-browser zip checking
+  js/games.js            game registry (web/games/*.json); Blob side of the zip check
+  js/zipcore.js          pure zip central-directory reading, manifest check, split-set assembly; shared with the server
   js/romstore.js         IndexedDB ROM storage, one set per game plus shared BIOS zips
   games/                 one JSON file per game + index.json
-  js/app.js              screens: ROM -> lobby -> match
-server/serve.js   zero-dependency static server; renders /config.json from env
-server/romsets.js packaged sets: checks them, assembles Fightcade split pairs in memory
+  status.html            netplay reachability and open rooms, from /status.json
+server/serve.js   zero-dependency static server; /config.json, /status.json, packaged ROMs; JSON-lines log
+server/romsets.js packaged sets: checks them, assembles Fightcade split pairs in memory (uses web/js/zipcore.js)
 bot/fluxer-bot.mjs  Fluxer gateway bot (Node 22+, no deps)
 scripts/          netplay-server.sh (build + run the official EmulatorJS netplay server), dev.sh,
-                  romset.py (manifest / merge / verify / bios for any game), merge-romset.py (3rd Strike wrapper),
-                  fetch-emulatorjs.sh (install the pinned EmulatorJS + fbneo core into web/ejs/)
-docs/             ROADMAP.md (phases, measurements), game-adapter.d.ts (game file format)
+                  romset.py (manifest / merge / verify / bios / add for any game), merge-romset.py (3rd Strike wrapper),
+                  fetch-emulatorjs.sh (install the pinned EmulatorJS + fbneo core into web/ejs/),
+                  check-ejs-internals.mjs (every EmulatorJS internal we touch still exists), validate-games.mjs
+test/             `npm test`: zip check/assembly, Player 2 roster, delay queue, ROM store, packaged sets, game files, internals
+docs/             ROADMAP.md, TROUBLESHOOTING.md, emulatorjs-internals.md, game-adapter.d.ts (game file format)
 roms/             git-ignored; game and BIOS zips here are served for personal use (see ROMs)
 deploy/           Dockerfiles, docker-compose.yml, Caddyfile (TLS for two hostnames)
 ```
+
+## Architecture
+
+```
+            Matrix room events (app.thirdstrike.lobby: challenge / accept / cancel)
+   ┌──────────────┐          or a shared link / Fluxer bot link           ┌──────────────┐
+   │  HOST page   │ ◄────────────────────────────────────────────────────► │  GUEST page  │
+   │ EmulatorJS + │                                                       │ guest-client │
+   │ FBNeo + ROM  │ ── socket.io: open-room / join-room / webrtc-signal ── │ (no ROM, no  │
+   │              │          via the netplay server (its own origin)      │  emulator)   │
+   │              │ ══ WebRTC: video + audio stream (60 fps) ═══════════► │              │
+   │              │ ◄═ WebRTC data channel "inputs" {player,index,value} ═ │ keys / pad   │
+   └──────────────┘ ◄═ {tsl: hello / roster / rematch} ════════════════► └──────────────┘
+          │  host input delay: own presses held N frames (match-logic DelayQueue)
+          │  roster: first joiner who asked to play, or the Matrix id the challenge named (decideRoster)
+          ▼
+   ROM: IndexedDB (rom:<game>, bios:<id>) ◄─ picked zips, split pairs combined by zipcore
+        or /roms/v<mtime>/<file> packaged by server/serve.js from ROMS_DIR (PACKAGED_ROM=1)
+```
+
+Spectators are guests whose inputs the host drops; each one is another stream the host encodes and uploads.
 
 ## Run locally
 
@@ -99,6 +126,8 @@ scripts/dev.sh
 That starts the netplay server on `:4000` and the lobby on <http://localhost:8080>. Open two browser profiles (or two machines on the LAN using your LAN IP), load the ROM in each, host in one and join in the other.
 
 Netplay needs a secure context for WebRTC and for the Matrix iframe: `localhost` counts, anything else needs HTTPS.
+
+`npm test` runs the unit tests (Node's built-in runner, no dependencies): zip reading, manifest checks and split-set assembly on both the browser and server paths, the Player 2 roster rules, the input delay queue, the ROM store's file matching, every game file against its schema, and the list of EmulatorJS internals the code relies on against the pinned copy in `web/ejs/` ([docs/emulatorjs-internals.md](docs/emulatorjs-internals.md)). `.github/workflows/test.yml` runs the same on every push (GitHub Actions and Forgejo Actions). `status.html` on the lobby shows whether the web server can reach the netplay server and which rooms are open. Something not working? See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Deploy
 
@@ -117,6 +146,14 @@ EmulatorJS is pinned. `scripts/fetch-emulatorjs.sh` installs EmulatorJS at a fix
 | `THREADS` | 1 | `0` stops pop-out tabs loading the threaded core |
 | `MAX_SPECTATORS` | 2 | Watch seats per match, 0-6 |
 | `EJS_DATA_PATH` | `ejs/` if installed, else CDN `latest` | Where EmulatorJS loads from |
+| `HOST`, `PORT` | `0.0.0.0`, `8080` | Where the web server listens; `HOST=127.0.0.1` keeps a dev server off the LAN |
+| `NETPLAY_URL` | `http://localhost:4000` | Netplay server origin the browser connects to (must be its own origin) |
+| `PUBLIC_URL` | the page's own URL | Base for shared, pop-out and bot links |
+| `ICE_SERVERS` | Google STUN | JSON array of RTCIceServer objects; add TURN for strict NATs (handed to every visitor) |
+| `ROMS_DIR` | `roms/` | Folder of sets to package; Fightcade's `ROMs/fbneo` works as is |
+| `PACKAGED_ROM` | unset | `1` serves and advertises complete sets from `ROMS_DIR` (private deployments only) |
+| `NETPLAY_STATUS_URL` | `NETPLAY_URL`, else `http://127.0.0.1:4000` | Where the web server itself reaches the netplay server for `/status.json` |
+| `LOG_FORMAT` | JSON lines | `text` for human-readable server log lines |
 
 Without Docker: run `scripts/netplay-server.sh` and `node server/serve.js` behind any TLS reverse proxy, setting `NETPLAY_URL` and `PUBLIC_URL` for the web process.
 

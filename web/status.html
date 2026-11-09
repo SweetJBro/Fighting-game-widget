@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Fighting Game Widget · status</title>
+  <link rel="stylesheet" href="css/app.css?v=30">
+  <style>
+    main { max-width: 720px; margin: 24px auto; padding: 0 16px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .q-good { color: var(--ok); } .q-poor { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">FG</span><span class="brand-text">Fighting Game Widget · status</span></div>
+    <div class="topbar-right"><a class="btn btn-ghost btn-sm" href="./">Lobby</a></div>
+  </header>
+  <main>
+    <div class="card">
+      <h2>Netplay server</h2>
+      <p id="netplay" class="hint">checking…</p>
+      <h3>Open rooms</h3>
+      <table><thead><tr><th>Game</th><th>Rooms</th><th>Who</th></tr></thead><tbody id="rooms"></tbody></table>
+      <p id="when" class="hint"></p>
+    </div>
+  </main>
+  <script>
+    (async function tick() {
+      try {
+        const s = await (await fetch("status.json", { cache: "no-store" })).json();
+        const n = document.getElementById("netplay");
+        n.textContent = s.netplay.reachable ? "Reachable at " + s.netplay.url + " · " + s.netplay.ms + " ms from the web server" : "Unreachable at " + s.netplay.url + " (from the web server; NETPLAY_STATUS_URL sets where it looks)";
+        n.className = "hint " + (s.netplay.reachable ? "q-good" : "q-poor");
+        const tb = document.getElementById("rooms"); tb.innerHTML = "";
+        for (const g of s.games) {
+          const tr = document.createElement("tr");
+          const cells = [g.name, g.rooms === null ? "?" : String(g.rooms.length),
+            g.rooms === null ? "" : g.rooms.map((r) => r.host + " (" + r.players + "/" + r.max + ")").join(", ")];
+          for (const c of cells) { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); }
+          tb.appendChild(tr);
+        }
+        document.getElementById("when").textContent = "As of " + new Date(s.time).toLocaleTimeString() + "; refreshes every 10 s.";
+      } catch (e) {
+        document.getElementById("netplay").textContent = "Could not read status.json: " + e.message;
+      }
+      setTimeout(tick, 10000);
+    })();
+  </script>
+</body>
+</html>

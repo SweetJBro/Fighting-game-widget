@@ -5,3 +5,4 @@ node_modules/
 web/ejs/
 __pycache__/
 *.pyc
+.claude/

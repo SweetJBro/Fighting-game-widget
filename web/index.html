@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting Game Widget</title>
-  <link rel="stylesheet" href="css/app.css?v=28">
+  <link rel="stylesheet" href="css/app.css?v=30">
 </head>
 <body>
   <header class="topbar">
@@ -40,6 +40,11 @@
         </p>
         <p class="hint" id="rom-accepted"></p>
         <p class="hint" id="rom-merge-hint"></p>
+        <details id="rom-howto" class="howto">
+          <summary>How to get the files</summary>
+          <ol id="rom-howto-steps"></ol>
+          <p class="hint">Nothing is downloaded or uploaded by this page: it only reads the zips you pick and keeps them in this browser.</p>
+        </details>
         <div id="rom-msg" class="notice hidden"></div>
         <label id="rom-drop" class="dropzone" for="rom-file">
           <input id="rom-file" type="file" accept=".zip,application/zip" multiple>
@@ -137,6 +142,7 @@
               <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
               <option>5</option><option>6</option><option>7</option><option>8</option>
             </select>
+            <span id="delay-hint" class="delay-hint" title="Estimated input lag: yours is the delay in frames; your opponent's is the network round trip plus video encoding and decoding."></span>
           </label>
           <button id="btn-rematch" class="btn btn-sm hidden">Rematch</button>
           <button id="btn-watch-link" class="btn btn-ghost btn-sm hidden" title="Copy a link that lets others watch this match">Watch link</button>
@@ -175,13 +181,19 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/games.js?v=28"></script>
-  <script src="js/config.js?v=28"></script>
-  <script src="js/romstore.js?v=28"></script>
-  <script src="js/netplay-tuning.js?v=28"></script>
-  <script src="js/guest-client.js?v=28"></script>
-  <script src="js/netplay-bridge.js?v=28"></script>
-  <script src="js/matrix-lobby.js?v=28"></script>
-  <script src="js/app.js?v=28"></script>
+  <script src="js/zipcore.js?v=30"></script>
+  <script src="js/games.js?v=30"></script>
+  <script src="js/config.js?v=30"></script>
+  <script src="js/romstore.js?v=30"></script>
+  <script src="js/netplay-tuning.js?v=30"></script>
+  <script src="js/match-logic.js?v=30"></script>
+  <script src="js/guest-client.js?v=30"></script>
+  <script src="js/netplay-bridge.js?v=30"></script>
+  <script src="js/matrix-lobby.js?v=30"></script>
+  <script src="js/ui/rom-screen.js?v=30"></script>
+  <script src="js/ui/matrix-ui.js?v=30"></script>
+  <script src="js/ui/match-screen.js?v=30"></script>
+  <script src="js/ui/pads-panel.js?v=30"></script>
+  <script src="js/app.js?v=30"></script>
 </body>
 </html>
