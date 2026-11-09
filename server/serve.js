@@ -15,14 +15,16 @@
    MAX_SPECTATORS          watchers per match, 0-6 (default 2; each costs the host one video encode)
    PUBLIC_URL        public URL of this page (for share links)
    HOST              bind address (default 0.0.0.0; use 127.0.0.1 to keep a dev server off the LAN)
-   ROMS_DIR          folder holding romsets for personal use (default ../roms). Any file named
-                     like a game's set (web/games/*.json rom.file) or its BIOS (bios.file) counts.
+   ROMS_DIR          folder holding romsets for personal use (default ../roms). Fightcade's own
+                     ROMs/fbneo folder works as is: split clone + parent pairs are checked and
+                     assembled in memory; incomplete sets are not advertised.
    PACKAGED_ROM=1    serve and advertise those files (opt-in: off unless set, so a checkout with
                      ROMs in roms/ never publishes them by accident) */
 "use strict";
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const romsets = require("./romsets");
 
 const ROOT = path.resolve(__dirname, "..", "web");
 // Personal/private use: a merged sfiii3*.zip placed here is served at /roms/<name>
@@ -49,27 +51,19 @@ function games() {
 /** Packaged files, keyed by lower-case file name: game sets and BIOS zips found in ROMS_DIR. */
 function packagedFiles() {
   if (process.env.PACKAGED_ROM !== "1") return {};
-  let onDisk;
-  try { onDisk = fs.readdirSync(ROMS_DIR); } catch (_) { return {}; }
-  const wanted = new Map();
-  for (const g of games()) {
-    wanted.set(g.rom.file.toLowerCase(), { kind: "rom", id: g.id });
-    if (g.bios) wanted.set(g.bios.file.toLowerCase(), { kind: "bios", id: g.bios.id });
-  }
   const out = {};
-  for (const n of onDisk) {
-    const w = wanted.get(n.toLowerCase());
-    if (!w) continue;
-    try {
-      const file = path.join(ROMS_DIR, n);
-      const st = fs.statSync(file);
-      if (!st.isFile()) continue;
-      // A version segment in the PATH (not a query string: EmulatorJS keeps the
-      // query in the file name it hands FBNeo) makes browsers and EmulatorJS's own
-      // cache refetch a replaced file. Any /roms/<anything>/<name> serves it.
-      out[n.toLowerCase()] = { ...w, name: n.toLowerCase(), file, size: st.size, mtime: st.mtime,
-        etag: `"${st.size}-${Math.floor(st.mtimeMs)}"`, url: `roms/v${Math.floor(st.mtimeMs)}/${n}` };
-    } catch (_) {}
+  const add = (kind, id, name, r) => {
+    if (!r) return;
+    // A version segment in the PATH (not a query string: EmulatorJS keeps the
+    // query in the file name it hands FBNeo) makes browsers and EmulatorJS's own
+    // cache refetch a replaced file. Any /roms/<anything>/<name> serves it.
+    const v = Math.floor(r.mtimeMs);
+    out[name] = { kind, id, name, file: r.file, buffer: r.buffer, size: r.size, mtime: new Date(r.mtimeMs),
+      etag: `"${r.size}-${v}"`, url: `roms/v${v}/${name}` };
+  };
+  for (const g of games()) {
+    try { add("rom", g.id, g.rom.file.toLowerCase(), romsets.resolveSet(ROMS_DIR, g)); } catch (e) { console.error("romset", g.id, e.message); }
+    if (g.bios) { try { add("bios", g.bios.id, g.bios.file.toLowerCase(), romsets.resolveBios(ROMS_DIR, g)); } catch (_) {} }
   }
   return out;
 }
@@ -138,6 +132,7 @@ function handle(req, res) {
     };
     if (req.headers["if-none-match"] === rom.etag) { res.writeHead(304, headers); return res.end(); }
     if (req.method === "HEAD") { res.writeHead(200, headers); return res.end(); }
+    if (rom.buffer) { res.writeHead(200, headers); return res.end(rom.buffer); }   // assembled split set
     return sendFile(res, rom.file, headers);
   }
   if (p.endsWith("/")) p += "index.html";

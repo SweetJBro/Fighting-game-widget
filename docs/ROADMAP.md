@@ -69,6 +69,15 @@ Findings along the way:
 | Game file generator | `romset.py add DAT SET` writes a complete game file; it reproduces the three hand-checked games |
 | Steam pad renumbering | Remembered controller-to-player choice survives Steam renaming "pad 2" to "pad 0" (verified with simulated pads) |
 
+### Hosting only (ROM-free guests)
+
+| Task | Result |
+|---|---|
+| Guests and spectators need no ROM | `guest-client.js` speaks EmulatorJS's netplay protocol directly (socket.io join, answer the host's WebRTC offer, video/audio, inputs over the data channel) without loading EmulatorJS. Verified: guest connected as Player 2 with no emulator, core or ROM fetched; keyboard and controller inputs reached the host as Player 2; spectator inputs ignored; rematch request reached the host |
+| Fightcade's split files accepted as picked | The ROM screen takes `sfiii3nr1.zip` + `sfiii3.zip` (or any clone + parent) together or one after the other and combines them in the browser by copying compressed entries (67 MB in about 40 ms). Verified byte-level with Python's zip reader and the manifest |
+| Chooser fix | The file input is reset after each pick, so picking the same file again works; results show in a message box instead of small red text |
+| Server reads Fightcade's folder | `ROMS_DIR` can be `ROMs/fbneo`: complete sets served, split pairs assembled in memory, incomplete sets skipped. Verified: 3rd Strike and Super Turbo assembled, Super Turbo hosted from it at 60 fps |
+
 ## Next
 
 | Task | Size | Notes |

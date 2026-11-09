@@ -95,7 +95,7 @@ async function onMessage(m) {
   if (parsed.help || parsed.unknown) {
     return post(m.channel_id, (parsed.unknown ? `Unknown game \`${parsed.unknown}\`.\n` : "") +
       `**Fighting Game Widget**\n\`${PREFIX} @player\` challenge someone · \`${PREFIX}\` open challenge · \`${PREFIX} <game> @player\` another game.\n` +
-      `Games: ${games}\nEach player needs the game's romset loaded once in the lobby page.`);
+      `Games: ${games}\nOnly the host needs the game's ROM; joining and watching need nothing.`);
   }
   const game = parsed.game;
   const code = makeCode();

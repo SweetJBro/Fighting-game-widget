@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting Game Widget</title>
-  <link rel="stylesheet" href="css/app.css?v=27">
+  <link rel="stylesheet" href="css/app.css?v=28">
 </head>
 <body>
   <header class="topbar">
@@ -29,9 +29,9 @@
       <div class="card">
         <h1 id="rom-heading">Bring your own ROM</h1>
         <p id="rom-intro">
-          This lobby does not ship or download any game data. Pick your own
-          <strong class="rom-game-name"></strong> FBNeo romset. Files stay in
-          this browser (IndexedDB) and are never uploaded anywhere.
+          Only the <strong>host</strong> of a match needs the game; people who join or watch need nothing.
+          To host <strong class="rom-game-name"></strong>, pick your own FBNeo romset, for example straight from
+          Fightcade's ROM folder. Files stay in this browser (IndexedDB) and are never uploaded anywhere.
         </p>
         <p id="rom-intro-packaged" class="hidden">
           This server packages its owner's <strong class="rom-game-name"></strong> romset for
@@ -40,6 +40,7 @@
         </p>
         <p class="hint" id="rom-accepted"></p>
         <p class="hint" id="rom-merge-hint"></p>
+        <div id="rom-msg" class="notice hidden"></div>
         <label id="rom-drop" class="dropzone" for="rom-file">
           <input id="rom-file" type="file" accept=".zip,application/zip" multiple>
           <span class="dropzone-title">Drop the zip(s) here or click to choose</span>
@@ -174,12 +175,13 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/games.js?v=27"></script>
-  <script src="js/config.js?v=27"></script>
-  <script src="js/romstore.js?v=27"></script>
-  <script src="js/netplay-tuning.js?v=27"></script>
-  <script src="js/netplay-bridge.js?v=27"></script>
-  <script src="js/matrix-lobby.js?v=27"></script>
-  <script src="js/app.js?v=27"></script>
+  <script src="js/games.js?v=28"></script>
+  <script src="js/config.js?v=28"></script>
+  <script src="js/romstore.js?v=28"></script>
+  <script src="js/netplay-tuning.js?v=28"></script>
+  <script src="js/guest-client.js?v=28"></script>
+  <script src="js/netplay-bridge.js?v=28"></script>
+  <script src="js/matrix-lobby.js?v=28"></script>
+  <script src="js/app.js?v=28"></script>
 </body>
 </html>

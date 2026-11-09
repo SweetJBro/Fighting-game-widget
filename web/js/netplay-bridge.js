@@ -526,3 +526,24 @@ TSL.Netplay = (() => {
     isStarted() { const e = emu(); return !!(e && e.started); }
   };
 })();
+
+/* Joiners and spectators never run EmulatorJS: route them to the ROM-free
+   guest client (guest-client.js). Hosts and local matches keep the emulator. */
+TSL.Netplay = ((host) => {
+  let guest = false;
+  const g = () => TSL.GuestClient;
+  return Object.assign({}, host, {
+    start(o) {
+      guest = o.role === "guest" || o.role === "spectator";
+      return guest ? g().start(o) : host.start(o);
+    },
+    leave() { return guest ? g().leave() : host.leave(); },
+    isConnected() { return guest ? g().isConnected() : host.isConnected(); },
+    isStarted() { return guest ? g().isStarted() : host.isStarted(); },
+    pads() { return guest ? g().pads() : host.pads(); },
+    assignPad(i, p) { if (!guest) host.assignPad(i, p); },
+    requestRematch() { return guest ? g().requestRematch() : host.requestRematch(); },
+    getRoster() { return guest ? g().getRoster() : host.getRoster(); },
+    isGuestClient() { return guest; }
+  });
+})(TSL.Netplay);

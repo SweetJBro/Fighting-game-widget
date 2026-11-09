@@ -40,28 +40,26 @@ Each game is one data file, `web/games/<id>.json`, listed in `web/games/index.js
 python3 scripts/romset.py add "FinalBurn Neo (ClrMame Pro XML, Arcade only).dat" garou --short Garou --aliases garou,motw
 ```
 
-`add` writes the game file with the DAT's file list (and BIOS), the verified Capcom-style or Neo Geo button layout, the pinned core options and the next free room id, then lists it. Check the names and any region DIP switch, build the zip with `romset.py merge` or `verify`, and boot it. The DAT is `dats/FinalBurn Neo (ClrMame Pro XML, Arcade only).dat` in the libretro/FBNeo repository.
+`add` writes the game file with the DAT's file list (and BIOS), the verified Capcom-style or Neo Geo button layout, the pinned core options and the next free room id, then lists it. Check the names and any region DIP switch, then pick the game's files on the ROM screen and boot it. The DAT is `dats/FinalBurn Neo (ClrMame Pro XML, Arcade only).dat` in the libretro/FBNeo repository.
 
 ## ROMs
 
-The repository ships no game data and downloads none. There are two ways a player gets a game:
+**Only the host needs the game.** People who join or watch run no emulator at all: their page answers the host's WebRTC connection, shows the host's video and audio, and sends their keyboard or controller input back (`web/js/guest-client.js`). They download no ROM and no emulator core.
 
-* **Bring your own.** The ROM screen takes the game's zip (and BIOS, if it has one) once per browser and keeps it in IndexedDB; it is never uploaded. Every file is checked against FinalBurn Neo's list before it is stored, so a split set, a wrong revision or a renamed zip gets a clear message instead of a black screen. Both players need the game, because the guest's EmulatorJS instance has to boot before it can switch to streaming mode.
-* **Packaged (personal use).** Drop game zips and BIOS zips into `roms/` next to this README and start the web server with `PACKAGED_ROM=1` (`scripts/dev.sh` does). It serves every file whose name matches a game's set or BIOS, advertises them in `/config.json` under versioned paths (`roms/v<mtime>/<file>`, so browsers and EmulatorJS's own cache refetch a replaced file), and the page skips the ROM screen for those games; a ROM stored in the browser still wins. Serving is opt-in so a checkout with ROMs in it never publishes them by accident. `roms/` is git-ignored and is **not** copied into the Docker image; to serve it from Docker, mount it at `/app/roms` and set `PACKAGED_ROM=1`. Whoever can open the page can download the files, so keep a packaged deployment on a private network or behind authentication, and use `HOST=127.0.0.1` to keep a dev server off the LAN.
+The repository ships no game data and downloads none. A host gets the game one of two ways:
 
-### Building the zips from Fightcade
+* **Pick it in the browser.** The ROM screen (it opens when you host without one) takes the game's files straight from Fightcade's `ROMs/fbneo` folder and keeps them in this browser's IndexedDB; they are never uploaded. Fightcade keeps some games split from a parent set: 3rd Strike is `sfiii3nr1.zip` + `sfiii3.zip`, Super Turbo is `ssf2xjr1.zip` + `ssf2t.zip`, KOF 2002 is `kof2002.zip` + the `neogeo.zip` BIOS. Pick both files, together or one after the other; the browser combines them into the full set. Every file is checked against FinalBurn Neo's list, so a wrong revision gets a clear message instead of a black screen.
+* **Packaged (personal use).** Start the web server with `PACKAGED_ROM=1` and `ROMS_DIR` pointing at a folder of sets, which can be Fightcade's own `ROMs/fbneo` folder as it is (`scripts/dev.sh` serves `roms/` next to this README by default). The server checks each game's set, combines split pairs in memory, serves complete sets under versioned paths (`roms/v<mtime>/<file>`) and advertises them in `/config.json`; incomplete sets are skipped. A set stored in the browser still wins. Serving is opt-in so a folder of ROMs is never published by accident; it is **not** copied into the Docker image (mount it at `/app/roms` and set `PACKAGED_ROM=1`). Whoever can open the page can download the files, so keep a packaged deployment private, and use `HOST=127.0.0.1` to keep a dev server off the LAN.
 
-Fightcade keeps clones split from their parents: `sfiii3nr1.zip` is 8 MB and needs `sfiii3.zip`; `ssf2xjr1.zip` is 1.3 MB and needs `ssf2t.zip`. EmulatorJS cannot keep a parent zip intact in the browser (it extracts it into loose files, which FBNeo ignores), so the browser needs one self-contained archive per game. `scripts/romset.py` builds and checks them with the standard library only:
+**Why combining at all?** Fightcade itself does not need it: its FinalBurn Neo reads a clone and its parent as two zips. The browser build of FBNeo inside EmulatorJS cannot (EmulatorJS unpacks a parent zip into loose files that FBNeo ignores), so the clone's files and the parent's shared files have to be in one zip. The browser and the server do that automatically by copying the compressed files into a new zip; nothing on disk changes.
+
+`scripts/romset.py` does the same from the command line (`merge`, `verify`, `bios`), for building a `roms/` folder by hand:
 
 ```bash
 FC=~/.var/app/com.fightcade.Fightcade/data/ROMs/fbneo
 python3 scripts/romset.py merge sfiii3nr1 $FC/sfiii3nr1.zip $FC/sfiii3.zip
-python3 scripts/romset.py merge ssf2xjr1 $FC/ssf2xjr1.zip $FC/ssf2t.zip
-python3 scripts/romset.py verify kof2002 $FC/kof2002.zip && cp $FC/kof2002.zip roms/
-python3 scripts/romset.py bios kof2002 $FC/neogeo.zip
+python3 scripts/romset.py verify kof2002 $FC/kof2002.zip
 ```
-
-`merge` matches files by size and CRC32 against the game's manifest, verifies the result member by member, and only then writes `roms/<set>.zip`; a failed merge never replaces a good file. `scripts/merge-romset.py` still works for 3rd Strike.
 
 ### Same versions as Fightcade
 
@@ -72,6 +70,7 @@ Fightcade's 3rd Strike is `sfiii3nr1` with Region = Japan and CPU = 100% (its `c
 ```
 web/              static lobby + player (vanilla JS, no build step)
   js/netplay-bridge.js   drives EmulatorJS netplay programmatically (openRoom / joinRoom), host input delay, fps monitor
+  js/guest-client.js     ROM-free guest/spectator: joins the room, shows the host's stream, sends inputs (no EmulatorJS)
   js/netplay-tuning.js   60 fps stream, bitrate, jitter buffer, peer stats (wraps browser WebRTC APIs, no EmulatorJS fork)
   js/matrix-lobby.js     matrix-widget-api transport, challenge events
   js/games.js            game registry (web/games/*.json) and in-browser zip checking
@@ -79,6 +78,7 @@ web/              static lobby + player (vanilla JS, no build step)
   games/                 one JSON file per game + index.json
   js/app.js              screens: ROM -> lobby -> match
 server/serve.js   zero-dependency static server; renders /config.json from env
+server/romsets.js packaged sets: checks them, assembles Fightcade split pairs in memory
 bot/fluxer-bot.mjs  Fluxer gateway bot (Node 22+, no deps)
 scripts/          netplay-server.sh (build + run the official EmulatorJS netplay server), dev.sh,
                   romset.py (manifest / merge / verify / bios for any game), merge-romset.py (3rd Strike wrapper),

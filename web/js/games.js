@@ -96,11 +96,16 @@ TSL.ZipCheck = (() => {
     const dec = new TextDecoder();
     for (let n = 0; n < count && p + 46 <= cd.byteLength; n++) {
       if (cd.getUint32(p, true) !== 0x02014b50) break;
+      const flags = cd.getUint16(p + 8, true);
+      const method = cd.getUint16(p + 10, true);
+      const time = cd.getUint16(p + 12, true), date = cd.getUint16(p + 14, true);
       const crc = cd.getUint32(p + 16, true);
+      const compSize = cd.getUint32(p + 20, true);
       const size = cd.getUint32(p + 24, true);
       const nameLen = cd.getUint16(p + 28, true), extraLen = cd.getUint16(p + 30, true), commentLen = cd.getUint16(p + 32, true);
+      const offset = cd.getUint32(p + 42, true);
       const name = dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nameLen));
-      if (!name.endsWith("/")) out.push({ name, size, crc });
+      if (!name.endsWith("/")) out.push({ name, size, crc, compSize, method, flags, time, date, offset });
       p += 46 + nameLen + extraLen + commentLen;
     }
     return out;
@@ -114,5 +119,60 @@ TSL.ZipCheck = (() => {
     return { ok: missing.length === 0, missing, present: need.length - missing.length, total: need.length };
   }
 
-  return { entries, check };
+  /** Builds one self-contained zip holding `spec.members`, taking each file (by
+      size + CRC32) from whichever source zip has it. Fightcade ships clones split
+      from their parent (sfiii3nr1.zip needs sfiii3.zip); EmulatorJS cannot keep a
+      parent zip intact, so the browser assembles the full set itself.
+      Compressed data is copied as is (no inflate/deflate), so this is fast and the
+      result is just Blob slices of the sources plus small headers.
+      Returns { blob, missing: [names] }; blob is null when anything is missing. */
+  async function merge(sources, spec, outName) {
+    const pool = new Map();   // "size:crc" -> { src, entry }
+    for (const src of sources) {
+      let list;
+      try { list = await entries(src); } catch (_) { continue; }
+      for (const e of list) {
+        const k = e.size + ":" + e.crc;
+        if (!pool.has(k) && !(e.flags & 1)) pool.set(k, { src, e });   // flag bit 0 = encrypted
+      }
+    }
+    const missing = spec.members.filter((m) => !pool.has(m.size + ":" + parseInt(m.crc32, 16))).map((m) => m.name);
+    if (missing.length) return { blob: null, missing };
+
+    const enc = new TextEncoder();
+    const parts = [], central = [];
+    let offset = 0;
+    for (const m of spec.members) {
+      const { src, e } = pool.get(m.size + ":" + parseInt(m.crc32, 16));
+      // The local header's own name/extra lengths decide where the data starts.
+      const lh = new DataView(await src.slice(e.offset, e.offset + 30).arrayBuffer());
+      if (lh.getUint32(0, true) !== 0x04034b50) throw new Error("damaged zip entry " + e.name);
+      const dataStart = e.offset + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+      const name = enc.encode(m.name);
+
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0, true);
+      h.setUint16(8, e.method, true); h.setUint16(10, e.time, true); h.setUint16(12, e.date, true);
+      h.setUint32(14, e.crc, true); h.setUint32(18, e.compSize, true); h.setUint32(22, e.size, true);
+      h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+      parts.push(h.buffer, name, src.slice(dataStart, dataStart + e.compSize));
+
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0, true);
+      c.setUint16(10, e.method, true); c.setUint16(12, e.time, true); c.setUint16(14, e.date, true);
+      c.setUint32(16, e.crc, true); c.setUint32(20, e.compSize, true); c.setUint32(24, e.size, true);
+      c.setUint16(28, name.length, true); c.setUint32(42, offset, true);
+      central.push(c.buffer, name);
+      offset += 30 + name.length + e.compSize;
+    }
+    const cdSize = central.reduce((n, b) => n + b.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, spec.members.length, true); end.setUint16(10, spec.members.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    const blob = new File([...parts, ...central, end.buffer], outName, { type: "application/zip" });
+    return { blob, missing: [] };
+  }
+
+  return { entries, check, merge };
 })();

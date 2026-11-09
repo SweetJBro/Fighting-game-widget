@@ -145,7 +145,9 @@
   sel.addEventListener("change", async () => {
     const g = TSL.Games.get(sel.value);
     if (!g || TSL.Netplay.isConnected()) { sel.value = state.game.id; return; }
-    if (await setGame(g)) enterLobby(); else show("screen-rom");
+    await setGame(g);
+    // Stay on the ROM screen if that is where the switch happened; otherwise the lobby.
+    if ($("screen-rom").classList.contains("hidden")) enterLobby();
   });
   function renderControlsHelp() {
     const tb = $("controls-buttons"); tb.innerHTML = "";
@@ -183,10 +185,10 @@
     const c1 = document.createElement("code"); c1.textContent = g.rom.file; acc.append(c1);
     if (g.rom.versionLabel) acc.append(" (" + g.rom.versionLabel + ")");
     if (g.bios) { acc.append(" and the " + (g.bios.label || "BIOS") + " "); const c2 = document.createElement("code"); c2.textContent = g.bios.file; acc.append(c2); }
-    acc.append(". Every file is checked against FinalBurn Neo's list, so the zip must keep its set name and hold the full set.");
+    acc.append(". Every file is checked against FinalBurn Neo's list.");
     $("rom-merge-hint").textContent = g.rom.parent
-      ? "Fightcade keeps this game split across " + g.rom.file + " and its parent " + g.rom.parent + ".zip. Merge them once with: python3 scripts/romset.py merge " + g.id + " " + g.rom.file + " " + g.rom.parent + ".zip"
-      : "";
+      ? "From Fightcade: pick both " + g.rom.file + " and " + g.rom.parent + ".zip from its ROMs/fbneo folder (together, or one after the other). Fightcade keeps this game split across the two; the browser combines them for you."
+      : (g.bios ? "From Fightcade: pick " + g.rom.file + " and " + g.bios.file + " from its ROMs/fbneo folder." : "");
 
     const packagedOnly = !!(state.rom && state.rom.packaged);
     $("rom-heading").textContent = gameReady() && packagedOnly ? "Ready to play" : "Bring your own ROM";
@@ -207,7 +209,7 @@
       else if (!bs.classList.contains("err")) { bs.textContent = "No " + g.bios.file + " yet."; bs.className = "dropzone-status"; }
     }
     const ready = gameReady();
-    badge.textContent = ready ? (state.rom.packaged ? "packaged · " : "") + g.short : "no ROM";
+    badge.textContent = ready ? (state.rom.packaged ? "packaged · " : "") + g.short : "no ROM (only to host)";
     badge.title = ready ? g.rom.file + (g.rom.versionLabel ? " · " + g.rom.versionLabel : "") : "";
     badge.classList.toggle("badge-muted", !ready); badge.classList.toggle("badge-ok", ready);
     $("btn-rom-continue").disabled = !ready;
@@ -215,25 +217,30 @@
     return ready;
   }
   async function takeRomFiles(files) {
-    for (const file of files) {
-      const st = $("rom-drop-status");
-      try {
-        const r = await TSL.RomStore.put(state.game, file);
-        toast("Stored " + r.name + " in this browser.");
-        (r.kind === "bios" ? $("bios-status") : st).classList.remove("err");
-      } catch (e) {
-        const target = state.game.bios && TSL.RomStore.canonicalName(file.name) === state.game.bios.file ? $("bios-status") : st;
-        target.textContent = e.message; target.className = "dropzone-status err";
-      }
-    }
+    if (!files.length) return;
+    const msg = $("rom-msg");
+    msg.classList.remove("hidden", "err-notice");
+    msg.textContent = "Checking " + files.map((f) => f.name).join(", ") + "…";
+    let r;
+    try { r = await TSL.RomStore.addFiles(state.game, files); }
+    catch (e) { r = { stored: [], need: [], notes: ["Could not read those files: " + (e.message || e)] }; }
     await refreshRom();
+    const lines = [];
+    if (r.stored.length) lines.push("Stored " + r.stored.join(" and ") + " in this browser.");
+    if (r.need.length) lines.push("Got it. Now also pick " + r.need.join(" and ") + " (from the same Fightcade folder).");
+    lines.push(...r.notes);
+    if (!lines.length) lines.push("Nothing usable for " + state.game.name + " in that pick.");
+    msg.textContent = lines.join(" ");
+    msg.classList.toggle("err-notice", !r.stored.length && !r.need.length);
+    if (r.stored.length) toast(lines[0]);
   }
-  $("rom-file").addEventListener("change", (e) => takeRomFiles([...e.target.files]));
+  // Reset the chooser after every pick: picking the same file again must fire "change".
+  $("rom-file").addEventListener("change", (e) => { const files = [...e.target.files]; e.target.value = ""; takeRomFiles(files); });
   const dz = $("rom-drop");
   ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
   ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
   dz.addEventListener("drop", (e) => takeRomFiles([...e.dataTransfer.files]));
-  $("btn-rom-clear").addEventListener("click", async () => { await TSL.RomStore.clear(state.game); await refreshRom(); });
+  $("btn-rom-clear").addEventListener("click", async () => { await TSL.RomStore.clear(state.game); $("rom-msg").classList.add("hidden"); await refreshRom(); });
   $("btn-rom-continue").addEventListener("click", () => {
     if (state.pending) { const m = state.pending; state.pending = null; show("screen-lobby"); m(); return; }
     enterLobby();
@@ -248,7 +255,13 @@
     state.pending = start;
     await refreshRom();
     show("screen-rom");
-    toast("You need " + g.name + " (" + g.rom.file + (g.bios ? " + " + g.bios.file : "") + ") for this match.", true);
+    toast("To host " + g.name + " you need its ROM (" + g.rom.file + (g.bios ? " + " + g.bios.file : "") + ").", true);
+  }
+  /** Joining or watching needs no ROM, only the right game selected (for its controls). */
+  async function asGuestOf(g, start) {
+    if (!g) { toast("This match is for a game this lobby does not know.", true); return; }
+    if (g.id !== state.game.id) await setGame(g);
+    start();
   }
 
   /* ---------- Lobby ---------- */
@@ -256,11 +269,10 @@
   $("player-name").addEventListener("change", () => { state.name = myName(); localStorage.setItem("tsl.name", state.name); });
 
   async function enterLobby() {
-    if (!gameReady()) { show("screen-rom"); return; }
     show("screen-lobby");
     $("btn-local").classList.toggle("hidden", state.mode === "direct");
     $("seats-wrap").classList.toggle("hidden", state.mode === "direct" && params.get("role") !== "host");
-    $("btn-local").onclick = () => startMatch({ code: "LOCAL", role: "local" });
+    $("btn-local").onclick = () => withGame(state.game, () => startMatch({ code: "LOCAL", role: "local" }));
     if (state.mode === "direct") return startDirect();
     if (state.mode === "matrix") return matrixLobby();
     return standaloneLobby();
@@ -270,10 +282,7 @@
   function standaloneLobby() {
     $("lobby-title").textContent = state.game.short + " lobby";
     $("lobby-subtitle").textContent = "Host a match and share the link, or join someone who is waiting.";
-    $("btn-host").onclick = () => {
-      const code = makeCode();
-      startMatch({ code, role: "host" });
-    };
+    $("btn-host").onclick = () => withGame(state.game, () => startMatch({ code: makeCode(), role: "host" }));
     $("btn-join").onclick = () => {
       const code = $("join-code").value.trim().toUpperCase();
       if (!code) return toast("Enter a match code first.", true);
@@ -336,9 +345,10 @@
     $("list-title").parentElement.classList.add("hidden");
     $("btn-host").textContent = role === "spectator" ? "Watch" : "Fight";
     const m = { code, role, sid: params.get("sid") || undefined, expectedGuest: params.get("expect") || null };
-    $("btn-host").onclick = () => startMatch(m);
+    const go = () => (role === "host" ? withGame(state.game, () => startMatch(m)) : startMatch(m));
+    $("btn-host").onclick = go;
     // Pop-out tabs arrive with autostart=1: the click already happened in the opener.
-    if (params.get("autostart") === "1") startMatch(m);
+    if (params.get("autostart") === "1") go();
   }
 
   // Matrix widget: members + challenge events inside the room.
@@ -444,12 +454,13 @@
       addGameTag(left.querySelector(".who"), c.game);
       left.querySelector(".meta").textContent = c.code;
       const btn = document.createElement("button"); btn.className = "btn btn-sm"; btn.textContent = "Watch";
-      btn.onclick = () => withGame(TSL.Games.get(c.game), () => startMatch({ code: c.code, role: "spectator" }));
+      btn.onclick = () => asGuestOf(TSL.Games.get(c.game), () => startMatch({ code: c.code, role: "spectator" }));
       li.append(left, btn); ul.appendChild(li);
     }
   }
 
   async function sendChallenge(toId) {
+    if (!gameReady()) { await withGame(state.game, () => sendChallenge(toId)); return; }
     const code = makeCode();
     const id = crypto.randomUUID();
     try {
@@ -461,7 +472,7 @@
 
   async function acceptChallenge(c) {
     // Check the ROM first: accepting and then failing to load would strand the challenger.
-    await withGame(TSL.Games.get(c.game), async () => {
+    await asGuestOf(TSL.Games.get(c.game), async () => {
       try { await state.matrix.send({ kind: "accept", id: c.id, code: c.code, game: c.game, by: { id: state.myId, name: myName() } }); } catch (_) {}
       state.challengeId = c.id;
       $("match-opponent").textContent = "vs " + c.from.name;
@@ -674,5 +685,6 @@
   // An explicit name in the link (pop-out tab, bot link) wins over a stored one.
   if (params.get("name")) { state.name = params.get("name"); $("player-name").value = state.name; }
 
-  if (await setGame(initialGame())) enterLobby(); else show("screen-rom");
+  await setGame(initialGame());
+  enterLobby();
 })();
