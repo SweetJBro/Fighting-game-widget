@@ -75,10 +75,70 @@ The widget iframe needs `allow-popups allow-popups-to-escape-sandbox` in its
 sandbox, which Element grants. Another client may not; untick "Open matches in
 a new tab" and play inside the widget.
 
-**Controller not seen**
-Browsers reveal a controller only after a button press while the page is open.
-Steam Input pads: set Steam's Desktop Layout to the Gamepad template, or run the
-browser as a non-Steam game (see README, Controls).
+## Controllers
+
+The match bar's **Controls** button opens the controller panel: every controller
+the browser sees, a dot that lights while a button is held, a "non-standard
+layout" tag, and what each one does in this match. Start there.
+
+**Controller not seen (the top bar says "no controller")**
+Browsers reveal a controller only after a button press while the page has
+focus. Click the page once, then press a button. If it still does not appear:
+
+* **Steam is running.** Steam Input presents controllers as virtual Xbox pads
+  and, outside a game, applies its *Desktop Layout*, which turns the controller
+  into a mouse and keyboard; the browser then lists the pad but no button ever
+  registers. Fix in Steam: Settings → Controller → Desktop Layout → choose the
+  **Gamepad** template. Or add the browser as a non-Steam game with a Gamepad
+  layout and launch it from Steam.
+* **Check what the browser sees.** F12 → Console, paste:
+  ```js
+  [...navigator.getGamepads()].filter(Boolean).map(g => g.id + " / " + g.mapping)
+  ```
+  Nothing listed: the OS or Steam is not handing the device to the browser.
+  Listed but never "pressed": paste the live watcher below and press buttons.
+  ```js
+  window._padWatch = setInterval(() => {
+    const pads = [...navigator.getGamepads()].filter(Boolean);
+    console.clear();
+    pads.forEach(g => console.log(g.id.slice(0, 48), g.mapping, "→",
+      g.buttons.map((b, i) => b.pressed ? i : null).filter(x => x != null)));
+  }, 100);   // clearInterval(window._padWatch) to stop
+  ```
+  If the pressed list stays empty, the layer in between (Steam, a remapper,
+  the browser's gamepad permission) is swallowing the buttons.
+
+**Seen, dot lights, but the game does not react**
+
+* **Local match:** open **Controls** and set Player 1 and Player 2 in the
+  dropdowns. EmulatorJS hands out players in connection order, so a Steam
+  virtual pad can hold Player 1 while the stick is Player 2 or nothing. The
+  choice is remembered by controller name and re-applied every second, so a
+  pad that reconnects goes back where you put it.
+* **Hosting with two controllers** (stick plus Steam's virtual pad): press
+  **Use this** on the one you play with. It drives Player 1 and the other pads
+  are silenced, so none of them can move your opponent's Player 2.
+* **Joining:** the guest reads the preferred controller only, or, with none
+  chosen, every controller with the standard layout, all merged. Press
+  **Use this** on yours if a second device sends stray inputs. A controller
+  tagged "non-standard layout" is ignored when joining unless you prefer it;
+  its button numbers do not match the game's table, so expect to remap on
+  the host side instead (host the match yourself, then rebind in EmulatorJS's
+  Control Settings).
+* **Spectators** are ignored by design.
+
+**Buttons land on the wrong actions**
+A remap saved in an earlier session. **Reset controller settings** in the panel
+forgets players, the preferred controller and every per-game remap and puts the
+game's default buttons back at once.
+
+**Steam renumbered the pad ("X-Box 360 pad 2" became "pad 0")**
+Handled: remembered choices match the name without the number.
+
+**Controller moves but the stick does not**
+Only the left stick and the D-pad move. A stick that needs a large push: the
+guest's threshold is 35% of travel (`STICK_THRESHOLD` in `guest-client.js`);
+the host's stick goes through EmulatorJS's own analog handling.
 
 ## Server
 

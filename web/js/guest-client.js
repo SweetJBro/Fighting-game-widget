@@ -182,6 +182,12 @@ TSL.GuestClient = (() => {
     "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT"];
   let keyMap = new Map(), padMap = new Map();
   const keySources = new Map(), padSources = new Map();
+  // Left stick deflection that counts as a direction. Fightcade's FBNeo uses a
+  // similar dead zone; 0.5 made quarter-circles drop on sticks with short throw.
+  const STICK_THRESHOLD = 0.35;
+  const padStore = TSL.PadLogic.store(localStorage);
+  let polledIndexes = new Set();   // pads read on the previous poll
+  let lastPickReason = "none", warnedNonStandard = false;
 
   function buildMaps() {
     keyMap = new Map(); padMap = new Map();
@@ -218,19 +224,39 @@ TSL.GuestClient = (() => {
     setSource(keySources, "k" + keyName(e), idx, e.type === "keydown" ? 1 : 0);
   }
 
+  /** Every source a pad contributed is released (a pad we stop reading must not leave a button held). */
+  function releasePad(index) {
+    for (const k of [...padSources.keys()]) {
+      const [src, idx] = k.split(":");
+      if (src.startsWith("p" + index + "b") || src.startsWith("p" + index + "a")) setSource(padSources, src, Number(idx), 0);
+    }
+  }
+  const livePads = () => [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean);
   function pollPads() {
-    const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean);
-    for (const gp of pads) {
+    const all = livePads();
+    // Which pads to read: the preferred one if connected, else the standard-mapped
+    // ones, else all (TSL.PadLogic.pickPads). Several pads are OR'd together.
+    const pick = TSL.PadLogic.pickPads(all, padStore.preferred());
+    lastPickReason = pick.reason;
+    if (pick.reason === "standard" && pick.pads.length < all.length && !warnedNonStandard) {
+      warnedNonStandard = true;
+      console.warn("[guest] ignoring controller(s) without the standard mapping:", all.filter((g) => g.mapping !== "standard").map((g) => g.id).join("; "),
+        "- choose it under Controls to force it");
+    }
+    const now = new Set(pick.pads.map((gp) => gp.index));
+    for (const i of polledIndexes) if (!now.has(i)) releasePad(i);
+    polledIndexes = now;
+    for (const gp of pick.pads) {
       gp.buttons.forEach((b, i) => {
         const idx = padMap.get(PAD_LABELS[i]);
         if (idx !== undefined) setSource(padSources, "p" + gp.index + "b" + i, idx, b.pressed ? 1 : 0);
       });
       // Left stick -> RetroPad analog (16 +X, 17 -X, 18 +Y, 19 -Y), as EmulatorJS sends it.
-      const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
-      setSource(padSources, "p" + gp.index + "ax", 16, ax > 0.5 ? 0x7fff : 0);
-      setSource(padSources, "p" + gp.index + "ax", 17, ax < -0.5 ? 0x7fff : 0);
-      setSource(padSources, "p" + gp.index + "ay", 18, ay > 0.5 ? 0x7fff : 0);
-      setSource(padSources, "p" + gp.index + "ay", 19, ay < -0.5 ? 0x7fff : 0);
+      const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0, t = STICK_THRESHOLD;
+      setSource(padSources, "p" + gp.index + "ax", 16, ax > t ? 0x7fff : 0);
+      setSource(padSources, "p" + gp.index + "ax", 17, ax < -t ? 0x7fff : 0);
+      setSource(padSources, "p" + gp.index + "ay", 18, ay > t ? 0x7fff : 0);
+      setSource(padSources, "p" + gp.index + "ay", 19, ay < -t ? 0x7fff : 0);
     }
   }
 
@@ -279,7 +305,22 @@ TSL.GuestClient = (() => {
     getRoster() { return roster; },
     isConnected() { return started && connected; },
     isStarted() { return started; },
-    pads() { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean).map((gp) => ({ index: gp.index, id: gp.id, player: 0, standard: gp.mapping === "standard" })); },
+    /** Live controllers: player 0 = read and sent as Player 2, -1 = ignored (not preferred, or non-standard mapping). */
+    pads() {
+      const preferred = padStore.preferred();
+      const L = TSL.PadLogic;
+      return livePads().map((gp) => ({
+        index: gp.index, id: gp.id, mapping: gp.mapping,
+        player: opts && opts.role !== "spectator" && polledIndexes.has(gp.index) ? 0 : -1,
+        standard: gp.mapping === "standard",
+        preferred: !!preferred && L.sameId(gp.id, preferred),
+        active: L.isActive(gp)
+      }));
+    },
+    setPreferredPad(id) { padStore.setPreferred(id || null); },
+    resetControllerSettings() { return padStore.reset(); },
+    /** For tests: why these pads are being read ("preferred" | "standard" | "all" | "none"). */
+    pickReason() { return lastPickReason; },
     /** For tests: inputs currently held. */
     held() { return Object.fromEntries(pressed); }
   };

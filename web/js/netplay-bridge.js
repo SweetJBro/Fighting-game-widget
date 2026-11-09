@@ -54,57 +54,64 @@ TSL.Netplay = (() => {
   }
 
   // Which physical controller drives which player, remembered by controller
-  // name: { "Qanba ... (STANDARD GAMEPAD ...)": 0 }. EmulatorJS would otherwise
-  // hand out player slots in connection order, and virtual pads (Steam Input)
-  // can take Player 1 and 2 before a real stick does.
-  const PAD_KEY = "tsl.padPlayers";
-  function padPrefs() { try { return JSON.parse(localStorage.getItem(PAD_KEY) || "{}"); } catch (_) { return {}; } }
-  function selectionValue(gp) { return gp.id + "_" + gp.index; }
-  // Steam Input renumbers its virtual pads ("Microsoft X-Box 360 pad 2" today,
-  // "pad 0" after a reconnect), so fall back to the name without that number.
-  const looseId = (id) => id.replace(/\bpad \d+\b/i, "pad");
-  function prefFor(prefs, id) {
-    if (typeof prefs[id] === "number") return prefs[id];
-    const hit = Object.keys(prefs).find((k) => looseId(k) === looseId(id));
-    return hit === undefined ? undefined : prefs[hit];
-  }
+  // name: { "Qanba ... (STANDARD GAMEPAD ...)": 0 } plus one preferred controller
+  // (TSL.PadLogic has the rules). EmulatorJS would otherwise hand out player
+  // slots in connection order, and virtual pads (Steam Input) can take Player 1
+  // and 2 before a real stick does. It also refills slots on every connect
+  // event, so the choices are re-applied once a second while the game runs.
+  const PL = () => TSL.PadLogic;
+  const padStore = TSL.PadLogic.store(localStorage);
+  let padTimer = null;
   function livePads() { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean); }
   function applyPadPrefs() {
     const e = emu();
     const sel = e && e.frontend && e.frontend.gamepadSelection;
-    if (!sel) return;
-    const prefs = padPrefs();
-    for (const gp of livePads()) {
-      const want = prefFor(prefs, gp.id);
-      if (typeof want !== "number" || want < 0 || want >= sel.length) continue;
-      const v = selectionValue(gp);
-      if (sel[want] === v) continue;
-      for (let i = 0; i < sel.length; i++) if (sel[i] === v) sel[i] = "";
-      sel[want] = v;
-    }
+    if (!sel || !opts) return;
+    const want = PL().desiredSelection({ selection: sel, pads: livePads(), prefs: padStore.players(),
+      preferredId: padStore.preferred(), role: opts.role === "local" ? "local" : "host" });
+    for (let i = 0; i < sel.length; i++) if (sel[i] !== want[i]) sel[i] = want[i];
   }
+  /** Live controllers with what they do right now. */
   function pads() {
     const e = emu();
     const sel = (e && e.frontend && e.frontend.gamepadSelection) || [];
-    return livePads().map((gp) => ({ index: gp.index, id: gp.id, player: sel.indexOf(selectionValue(gp)), standard: gp.mapping === "standard" }));
+    const preferred = padStore.preferred();
+    return livePads().map((gp) => ({
+      index: gp.index, id: gp.id, mapping: gp.mapping,
+      player: sel.indexOf(PL().selectionValue(gp)),
+      standard: gp.mapping === "standard",
+      preferred: !!preferred && PL().sameId(gp.id, preferred),
+      active: PL().isActive(gp)
+    }));
   }
+  /** Local match: controller `index` drives `player` (0-based; -1 = not playing). Remembered by controller name. */
   function assignPad(index, player) {
     const gp = livePads().find((g) => g.index === index);
     if (!gp) return;
-    const prefs = padPrefs();
-    // One controller per player: whoever held this player slot gives it up.
+    const prefs = padStore.players();
+    // One controller per player: whoever held this player slot gives it up, and
+    // an older entry for the same controller under Steam's other number goes too.
     for (const [id, p] of Object.entries(prefs)) {
-      if ((p === player && id !== gp.id) || (id !== gp.id && looseId(id) === looseId(gp.id))) delete prefs[id];
+      if (id !== gp.id && (p === player || PL().looseId(id) === PL().looseId(gp.id))) delete prefs[id];
     }
-    if (player < 0) delete prefs[gp.id]; else prefs[gp.id] = player;
-    try { localStorage.setItem(PAD_KEY, JSON.stringify(prefs)); } catch (_) {}
+    prefs[gp.id] = player;
+    padStore.setPlayers(prefs);
+    applyPadPrefs();
+  }
+  /** Any role with an emulator: the controller that drives Player 1 (null = first one connected). */
+  function setPreferredPad(id) { padStore.setPreferred(id || null); applyPadPrefs(); }
+  /** Forget pad players, the preferred pad and every per-game remap; restore the game's default buttons. */
+  function resetControllerSettings() {
+    const removed = padStore.reset();
     const e = emu();
-    const sel = e && e.frontend && e.frontend.gamepadSelection;
-    if (sel) {
-      const v = selectionValue(gp);
-      for (let i = 0; i < sel.length; i++) if (sel[i] === v || (i === player)) sel[i] = "";
-      if (player >= 0) sel[player] = v;
+    if (e && e.started && opts) {
+      try {
+        e.controls = TSL.Games.controls(opts.game);
+        if (e.frontend && e.frontend.checkGamepadInputs) e.frontend.checkGamepadInputs();
+      } catch (_) {}
+      applyPadPrefs();
     }
+    return removed;
   }
 
   // ---- host input delay -------------------------------------------------
@@ -273,6 +280,9 @@ TSL.Netplay = (() => {
     loadRemaps();
     applyPadPrefs();
     window.addEventListener("gamepadconnected", () => setTimeout(applyPadPrefs, 50));
+    // EmulatorJS refills slots on connect events; our choices are the source of truth.
+    clearInterval(padTimer);
+    padTimer = setInterval(applyPadPrefs, 1000);
     installInputDelay();
     hookMessages(n);
     startMonitor();
@@ -480,10 +490,13 @@ TSL.Netplay = (() => {
     getRoster() { return roster; },
     /** Host: only this Matrix id may take Player 2 (null = first joiner who asks to play). */
     setExpectedGuest(id) { expectedGuest = id || null; updateRoster(true); },   // decideRoster drops a mismatching Player 2
-    /** Live controllers: [{ index, id, player (-1 = none), standard }]. */
+    /** Live controllers: [{ index, id, mapping, player (-1 = none), standard, preferred, active }]. */
     pads,
-    /** Make controller `index` drive `player` (0-based; -1 = none). Remembered by controller name. */
+    /** Local match: make controller `index` drive `player` (0-based; -1 = not playing). Remembered by controller name. */
     assignPad,
+    setPreferredPad,
+    getPreferredPad() { return padStore.preferred(); },
+    resetControllerSettings,
     /** opts: { game, rom:{file|url,name}, bios?:{file|url,name}, code, role:'host'|'guest'|'spectator', sid?, name,
                 onStatus, onStats, onRematchRequest(name), onRematchDone() } */
     start(o) {
@@ -495,7 +508,7 @@ TSL.Netplay = (() => {
       injectLoader();
     },
     leave() {
-      clearInterval(statusTimer); clearTimeout(findTimer); clearInterval(monitorTimer); clearInterval(rosterTimer);
+      clearInterval(statusTimer); clearTimeout(findTimer); clearInterval(monitorTimer); clearInterval(rosterTimer); clearInterval(padTimer);
       const n = np();
       try { if (n && emu().isNetplay) n.leaveRoom(); } catch (_) {}
     },
@@ -520,6 +533,9 @@ TSL.Netplay = ((host) => {
     isStarted() { return guest ? g().isStarted() : host.isStarted(); },
     pads() { return guest ? g().pads() : host.pads(); },
     assignPad(i, p) { if (!guest) host.assignPad(i, p); },
+    setPreferredPad(id) { return guest ? g().setPreferredPad(id) : host.setPreferredPad(id); },
+    getPreferredPad() { return TSL.PadLogic.store(localStorage).preferred(); },
+    resetControllerSettings() { return guest ? g().resetControllerSettings() : host.resetControllerSettings(); },
     requestRematch() { return guest ? g().requestRematch() : host.requestRematch(); },
     getRoster() { return guest ? g().getRoster() : host.getRoster(); },
     isGuestClient() { return guest; }

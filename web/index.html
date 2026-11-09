@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting Game Widget</title>
-  <link rel="stylesheet" href="css/app.css?v=30">
+  <link rel="stylesheet" href="css/app.css?v=31">
 </head>
 <body>
   <header class="topbar">
@@ -170,7 +170,10 @@
         <div id="pad-panel">
           <h4 class="pad-title">Controllers</h4>
           <ul id="pad-list" class="list"></ul>
-          <p id="pad-empty" class="hint">No controller seen yet. Press any button on it.</p>
+          <p id="pad-empty" class="hint">No controller seen yet. Click the page once, then press any button on it.</p>
+          <p id="pad-steam-hint" class="hint">Using Steam? Its Desktop Layout turns a controller into a mouse and keyboard, so the browser sees no buttons. In Steam: Settings → Controller → Desktop Layout → pick the Gamepad template, or add your browser as a non-Steam game and launch it from Steam.</p>
+          <p class="hint pad-help">The dot lights while a button is held. Several controllers? In a local match pick Player 1 and 2 above; online, <strong>Use this</strong> makes one controller yours and silences the rest (Steam's virtual pad next to a real stick, for example).</p>
+          <div class="row"><button id="btn-pad-reset" class="btn btn-ghost btn-sm" title="Forget which controller is which player, the preferred controller, and every button remap saved by this browser">Reset controller settings</button></div>
         </div>
       </div>
     </section>
@@ -181,19 +184,20 @@
 
   <!-- matrix-widget-api must be present before js/matrix-lobby.js runs (see that file) -->
   <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.20.0/dist/api.min.js"></script>
-  <script src="js/zipcore.js?v=30"></script>
-  <script src="js/games.js?v=30"></script>
-  <script src="js/config.js?v=30"></script>
-  <script src="js/romstore.js?v=30"></script>
-  <script src="js/netplay-tuning.js?v=30"></script>
-  <script src="js/match-logic.js?v=30"></script>
-  <script src="js/guest-client.js?v=30"></script>
-  <script src="js/netplay-bridge.js?v=30"></script>
-  <script src="js/matrix-lobby.js?v=30"></script>
-  <script src="js/ui/rom-screen.js?v=30"></script>
-  <script src="js/ui/matrix-ui.js?v=30"></script>
-  <script src="js/ui/match-screen.js?v=30"></script>
-  <script src="js/ui/pads-panel.js?v=30"></script>
-  <script src="js/app.js?v=30"></script>
+  <script src="js/zipcore.js?v=31"></script>
+  <script src="js/games.js?v=31"></script>
+  <script src="js/config.js?v=31"></script>
+  <script src="js/romstore.js?v=31"></script>
+  <script src="js/netplay-tuning.js?v=31"></script>
+  <script src="js/match-logic.js?v=31"></script>
+  <script src="js/pad-logic.js?v=31"></script>
+  <script src="js/guest-client.js?v=31"></script>
+  <script src="js/netplay-bridge.js?v=31"></script>
+  <script src="js/matrix-lobby.js?v=31"></script>
+  <script src="js/ui/rom-screen.js?v=31"></script>
+  <script src="js/ui/matrix-ui.js?v=31"></script>
+  <script src="js/ui/match-screen.js?v=31"></script>
+  <script src="js/ui/pads-panel.js?v=31"></script>
+  <script src="js/app.js?v=31"></script>
 </body>
 </html>

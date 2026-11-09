@@ -96,6 +96,20 @@ From a review of architecture, tests, UX, ops and docs. Everything the host-stre
 | Packaged ROM hygiene | `Content-Disposition: attachment`, `nosniff`, `noindex`; only advertised files are ever served |
 | Docs | README: architecture diagram, full environment table, layout; [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) |
 
+### Controllers pass (November 2026)
+
+| Task | Result |
+|---|---|
+| Controller rules in one pure module | `web/js/pad-logic.js`: preferred pad, Steam renumbering, which pads the guest reads (`pickPads`), the player slots the host/local emulator should use (`desiredSelection`), reset. 8 unit tests |
+| Diagnostics in the Controls panel | Per controller: name, live activity dot, "non-standard layout" tag, what it does in this match (drives Player 1 / sent as Player 2 / ignored and why). Empty list shows the Steam Desktop Layout fix |
+| One preferred controller (host and guest) | **Use this** per controller, remembered by name. Host: it takes Player 1 and every other local pad is removed from the slots, so a second pad can never drive the remote opponent's Player 2. Guest: only it is read; without a choice, every standard-layout pad merged; a pad that stops being read releases its held inputs |
+| Choices survive EmulatorJS | EmulatorJS refills player slots on every `gamepadconnected`; the remembered choices are re-applied once a second while the game runs. "Not playing" is stored (-1) so a reconnecting pad stays out |
+| Guest stick and layout | Stick threshold 0.35 (was 0.5); non-standard pads skipped unless preferred, with one console warning |
+| Reset | **Reset controller settings** removes `tsl.padPlayers`, `tsl.preferredPad` and `tsl.controls.*`, restores the game's default table in the running emulator |
+| Docs | README Controls; TROUBLESHOOTING "Controllers" with console snippets from support sessions |
+
+Not done: the optional `netplay-bridge.js` split. The pad rules moved out into `pad-logic.js`; the EmulatorJS glue (apply, assign, reset) stayed in the bridge next to the emulator it drives.
+
 ## Next
 
 Roughly by impact over effort.
